@@ -59,14 +59,14 @@ the deliberate degradations — fix or confirm before relying on them:
   incentive note is now a `[on-chain]` high-confidence fact, not a guess. If a stream
   ever becomes active, extend `incentives.ts` to price `emissionPerSecond` (needs the
   reward token's decimals + USD price + aToken `totalSupply`) and surface an APY.
-- **Pharos Watch NAV API is still locked by default.** Data routes need
-  `PHAROS_WATCH_API_KEY` (self-serve at https://pharos.watch/api/). Until a key is
-  set, the `nav` layer uses on-chain drift only. Note from the OpenAPI doc: the
-  **peg/stablecoin routes are typed as opaque `JsonValue`** (no documented field
-  shape), so price extraction in `pharoswatch.ts` stays defensive/best-effort —
-  re-verify field names once a key exists. The **yield routes ARE documented**
-  (`YieldRanking.apyBase`/`apyReward`), so a future key-gated `trueyield` enrichment
-  can be schema-aligned.
+- ✅ **RESOLVED — Pharos Watch NAV API is live and shape-verified.** A real key was
+  used to confirm the response shapes: `pharoswatch.ts` now reads `/api/peg-summary`
+  (`coins[].currentDeviationBps`/`pegScore`/`activeDepeg`) — verified field names, not
+  guesses. The `nav` layer emits an `[api]` peg line that cross-checks the on-chain
+  oracle. The key lives only in the gitignored `.env` (`PHAROS_WATCH_API_KEY`); never
+  committed. Without a key the layer still runs on-chain-only and says so. Optional
+  next step: key-gated `trueyield` enrichment from `/api/yield-rankings`
+  (`apyBase`/`apyReward`, documented schema).
 - **trueyield RWA-income needs ≥2 snapshots** (by design). It measures Tulipa
   share-price growth between snapshots; on the very first run it reports `—`. Run
   `snapshot`, wait, then `report`. ERC-4626 exposes no share-price history to shortcut this.
@@ -82,6 +82,11 @@ the deliberate degradations — fix or confirm before relying on them:
   deployable today**; ERC-4337 session keys are viable too. The **only remaining gap
   is a public bundler URL** — not in the docs corpus; Phase 2 must self-host or obtain
   one. Smart-account factory is no longer a blocker (SafeSingletonFactory/CreateX).
+  Signing rails found in the docs: **Safe is officially supported** (UI
+  `app.safe.global` + Tx Service `transaction.safe.pharosnetwork.xyz`), **Fordefi**
+  (MPC), and a Pharos **agent toolkit** (Foundry `--private-key` + 4-check pre-check).
+  Recommended Phase-2 path: **Safe scoped-wallet** (no bundler needed). The Safe Tx
+  Service host did not resolve from this sandbox — confirm from a normal network.
 - ✅ **RESOLVED — automated test suite added.** `tests/live.test.ts` (run `npm test`)
   is a LIVE integration suite (no mocks) asserting invariants that catch the classic
   bugs: chain 1672, USDC decimals=6, ray-scaled APY < 100% (the "4,000,000%" guard),

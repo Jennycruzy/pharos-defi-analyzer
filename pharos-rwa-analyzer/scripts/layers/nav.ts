@@ -77,16 +77,19 @@ export async function analyzeNav(scan: WalletScan): Promise<NavResult> {
       'Pharos Watch reachable (health OK) but data routes need an API key (set PHAROS_WATCH_API_KEY). ' +
       'Showing on-chain NAV/depeg only. Pharos Watch tracks global stablecoin issuers, not the Pharos vault token.';
   } else {
-    apiNote = 'Pharos Watch issuer-level peg references included below.';
+    apiNote = 'Pharos Watch issuer-level peg references (from /api/peg-summary) included below.';
     for (const id of PHAROS_WATCH.referenceStablecoinIds) {
       const peg = await client.getPeg(id);
+      // Depeg if Pharos Watch flags an active depeg OR drift exceeds our threshold.
+      const depegged =
+        peg.activeDepeg === true || (peg.driftPct !== null && Math.abs(peg.driftPct) > THRESHOLDS.depegDriftPct);
       flags.push({
         subject: `${id} (issuer reference)`,
-        metric: 'Pharos Watch peg',
-        value: sourced(peg.priceUsd, 'api', peg.available ? 'medium' : 'low', peg.note),
+        metric: 'Pharos Watch peg (deviation bps / pegScore)',
+        value: sourced(peg.priceUsd, 'api', peg.available ? 'high' : 'low', peg.note),
         expected: 1,
         driftPct: peg.driftPct === null ? null : round(peg.driftPct),
-        depegged: peg.driftPct !== null && Math.abs(peg.driftPct) > THRESHOLDS.depegDriftPct,
+        depegged,
       });
     }
   }

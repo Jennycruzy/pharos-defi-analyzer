@@ -135,7 +135,7 @@ Pharos Watch    : health ✓ status=healthy upstream=DefiLlama key=not set
 | maturity | ✅ / ⚠ | ERC-4626 redemption limits on-chain; true off-chain maturity dates labeled `[static]` and only shown if actually known (none fabricated) |
 | trueyield | ✅ Confirmed | base APY from `currentLiquidityRate`; RWA income from share-price snapshots; incentives labeled, never folded into the number |
 | risk | ✅ Confirmed | oracle USD pricing (8-decimal) + health-factor/liquidation distance + concentration |
-| nav | ⚠ Partial | on-chain share-price/oracle drift always works; Pharos Watch data API requires `PHAROS_WATCH_API_KEY` |
+| nav | ✅ Confirmed | on-chain share-price/oracle drift always; with `PHAROS_WATCH_API_KEY` set, adds verified `[api]` peg from `/api/peg-summary` (deviation bps + pegScore) |
 | diff | ✅ Confirmed | local JSON snapshots under `./snapshots`, pure reads |
 
 ---
@@ -149,12 +149,16 @@ All account-abstraction predeploys below are **confirmed deployed on mainnet**
 - **SenderCreator v0.7 / v0.6** — both deployed.
 - **SafeSingletonFactory** `0x914d…43d7` and **CreateX** `0xba5E…ba5Ed` — both deployed.
 - **Bundler**: still **not found** (no public URL in the docs corpus) — Phase 2 must
-  self-host one or obtain it from the team.
+  self-host one (Rundler/Alto/Skandha) or obtain it from the team for the 4337 path.
+- **Signing rails (from the docs):** **Safe** is officially supported — UI
+  `app.safe.global` + Transaction Service `transaction.safe.pharosnetwork.xyz`;
+  **Fordefi** (MPC) is available; and Pharos ships an **agent toolkit** that signs via
+  Foundry `--private-key` behind a mandatory 4-check pre-check.
 - **Tulipa write path**: deposits are signature-gated (`0x50921b23(amount,
   receiver, deadline, v, r, s)`) — Phase 2 needs the allowlisted signer.
-- **Recommendation**: default Phase 2 to a **Safe scoped-wallet + policy** path
-  (deployable today via SafeSingletonFactory, no bundler required). ERC-4337 session
-  keys are viable once a bundler is sourced — the on-chain infra is already present.
+- **Recommendation**: default Phase 2 to the **Safe scoped-wallet + policy** path
+  (factory deployed + Tx Service documented, **no bundler required**). ERC-4337
+  session keys are viable once a bundler is sourced — the on-chain infra is present.
 
 ## Tests
 

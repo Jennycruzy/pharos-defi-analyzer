@@ -124,33 +124,35 @@ never deposits.
 
 ---
 
-## E. Pharos Watch (NAV / depeg API) — ⚠️ PARTIAL: key-gated, degrade gracefully
+## E. Pharos Watch (NAV / depeg API) — ✅ key-verified; response shapes confirmed
 
 | Check | Result |
 | --- | --- |
 | Base URL | `https://api.pharos.watch` (confirmed JSON host) |
-| `GET /api/health` (exempt, **no key**) | `200 {"status":"healthy",…}` — upstream provider **DefiLlama**, USDC snapshot ~400 s old |
+| `GET /api/health` (exempt, **no key**) | `200 {"status":"healthy",…}` — upstream provider **DefiLlama** |
 | `GET /api/peg-summary` (no key) | **401** `"Unauthorized: valid X-API-Key required"` |
-| `GET /api/depeg-events` (no key) | **401** |
-| OpenAPI catalogue | `https://pharos.watch/openapi.json` — 38 routes incl. `/api/peg-summary`, `/api/depeg-events`, `/api/stablecoin/{id}`, `/api/stablecoins`, `/api/yield-rankings` |
+| `GET /api/peg-summary` (**with key**) | **200** — `{ coins: [...] }`, 371 coins |
+| `GET /api/stablecoins` (**with key**) | **200** — `{ peggedAssets: [...] }`, 549 assets |
+| OpenAPI catalogue | `https://pharos.watch/openapi.json` — 38 routes |
+
+**Confirmed response shapes (with a live key — no longer guessed):**
+- `/api/peg-summary` → `coins[]` with `currentDeviationBps`, `pegScore`,
+  `activeDepeg`, `worstDeviationBps`, `priceConfidence`, `priceUpdatedAt`. Live
+  `usdc-circle`: **−1 bps, pegScore 93/100, activeDepeg false.** ← the `nav` layer
+  uses THIS as the depeg signal.
+- `/api/stablecoins` → `peggedAssets[]` with `id, symbol, name, price, pegType`
+  (`usdc-circle` ≈ $0.99975).
+- `/api/stablecoin/{id}` → descriptive issuer metadata (no leading live price), so
+  the client deliberately does **not** use it for pricing.
 
 **What this means for layer 5 (nav):**
-- All *data* routes require `X-API-Key: ph_live_…` (self-serve keys at
-  `https://pharos.watch/api/`). The exempt routes are only `/api/health`, OG
-  images, and a few POSTs.
-- Pharos Watch tracks **global stablecoins** (DefiLlama-sourced; IDs like
-  `usdc-circle`, `usdt-tether`, `paxg-paxos`). It does **not** track the
-  Pharos-native vault token `tulPRWA` or per-market aTokens.
-
-**Graceful behaviour built:**
-1. Always confirm reachability via `/api/health` (no key) so the wiring is proven.
-2. If `PHAROS_WATCH_API_KEY` is set in `.env`, query `/api/peg-summary` /
-   `/api/stablecoin/{id}` for the global peg reference of USDC's issuer — labeled
-   **`[api]`**.
-3. Always cross-check on-chain: Tulipa **ERC-4626 share-price drift** and the
-   OpenFi **oracle USD price** of USDC/WETH/WPROS — labeled **`[on-chain]`**.
-4. If no key, layer 5 still produces on-chain NAV/depeg flags and clearly states
-   the API portion is unavailable. Nothing is faked.
+- The key lives only in the gitignored `.env` (`PHAROS_WATCH_API_KEY`); it is never
+  committed. Without it the layer still runs on-chain-only and says so.
+- Pharos Watch tracks **global stablecoin issuers** (e.g. `usdc-circle`), not the
+  Pharos-native vault token `tulPRWA` — so vault NAV always comes from the on-chain
+  ERC-4626 share price, and the API only adds the issuer-level peg reference.
+- Live cross-check: API `usdc-circle` (−0.01%) agrees with the OpenFi oracle
+  (−0.03%). Independent sources, both healthy, each labeled distinctly.
 
 ---
 
@@ -170,17 +172,35 @@ with `eth_getCode` on mainnet. **All six are deployed** (run `npm run verify`):
 
 | Probe | Result |
 | --- | --- |
-| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler. Guessed hosts and the docs corpus contain **no public bundler URL**. **STILL NOT FOUND** — Phase 2 must run its own bundler or obtain one from the team. |
+| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler. The docs corpus (`docs.pharos.xyz/llms-full.txt`) contains **no public bundler URL**. **STILL NOT FOUND** — for the 4337 session-key path, Phase 2 must self-host a bundler (Rundler/Alto/Skandha) or obtain one from the team. (Alchemy supports Pharos RPC but its AA/bundler product on Pharos is not documented.) |
 | **Tulipa write path** | Signature-gated deposit `0x50921b23(amount,receiver,deadline,v,r,s)` — Phase-2 deposits need the allowlisted signer. |
 
+### Signing rails found in the Pharos docs (the "agent center" search)
+- **Safe (Gnosis Safe) is officially supported** — the recommended scoped-wallet path:
+  - Safe UI: `https://app.safe.global`
+  - **Safe Transaction Service API: `https://transaction.safe.pharosnetwork.xyz`**
+    (create/submit txs, collect signatures, monitor status, automation hooks).
+  - Combined with the on-chain-verified **SafeSingletonFactory** (`0x914d…43d7`), a
+    Safe scoped wallet is deployable and operable **today, with no bundler**.
+  - ⚠️ The Tx Service host did **not resolve from this sandbox** (curl status 000 —
+    DNS-restricted environment, not necessarily down). Confirm reachability from a
+    normal network before relying on it.
+- **Fordefi** — institutional **MPC** wallet infra with policy-based access control;
+  an alternative scoped/policy signer for Phase 2.
+- **Pharos "agent" toolkit** (the agent-center pattern): a `SKILL.md`-driven agent
+  that signs via **Foundry `cast`/`forge --private-key`**, reads `assets/networks.json`
+  for RPC/chain, and enforces a mandatory **4-check pre-check** before any write
+  (private key, address, network, balance). This is the official blueprint for the
+  Phase-2 "scoped key + policy" agent.
+
 **Phase-2 decision input (sharpened):**
-- ERC-4337 is **fully viable** — both v0.6 and v0.7 EntryPoints + SenderCreators are live.
-- A **Safe-based scoped wallet is deployable today** via the deployed
-  `SafeSingletonFactory` (deterministic), and `CreateX` is available for
-  CREATE2/CREATE3 deployments.
-- The **only missing piece for the session-key/4337 path is a public bundler URL.**
+- ERC-4337 is **fully viable on-chain** — both v0.6 and v0.7 EntryPoints +
+  SenderCreators are live — but has **no public bundler URL** yet (the one gap).
+- The **Safe scoped-wallet path is fully available**: factory deployed (verified),
+  Transaction Service API + UI documented by Pharos. **No bundler required.**
 - **Recommendation:** default Phase 2 to the **Safe scoped-wallet + policy** path
-  (deployable now, no bundler needed). Switch to ERC-4337 session keys once a
+  via `transaction.safe.pharosnetwork.xyz` (mirrors Pharos's own agent-toolkit
+  "scoped key + 4-check pre-check" model). Move to ERC-4337 session keys only once a
   bundler is sourced; the on-chain infra for it is already confirmed present.
 
 ---
@@ -193,5 +213,5 @@ with `eth_getCode` on mainnet. **All six are deployed** (run `npm run verify`):
 | maturity | ✅/⚠️ On-chain limits; off-chain dates labeled | ERC-4626 `maxWithdraw`/`maxRedeem` live; true maturity dates not on-chain |
 | trueyield | ✅ Confirmed | base APR from `currentLiquidityRate`; RWA income from share-price snapshots; incentives labeled unverified |
 | risk | ✅ Confirmed | oracle USD pricing (8-dp) + HF/liquidation + concentration |
-| nav | ⚠️ Partial | on-chain drift always; Pharos Watch API needs key |
+| nav | ✅ Confirmed | on-chain drift always; with a key, adds verified `[api]` peg from `/api/peg-summary` (shapes confirmed live) |
 | diff | ✅ Confirmed | local JSON snapshots, pure reads |
