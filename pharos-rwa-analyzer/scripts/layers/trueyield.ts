@@ -76,10 +76,17 @@ export function analyzeTrueYield(scan: WalletScan, previous: Snapshot | null): T
         'static',
         'low',
       ),
+      // Mirror the RWA calc's confidence/note so a degraded or implausible figure
+      // is never silently promoted to a confident headline number.
       netApyEstimatePct:
         rwa.value === null
           ? sourced<number>(null, 'on-chain', 'low', rwa.note ?? 'Insufficient snapshot history.')
-          : sourced<number>(round(rwa.value), 'on-chain', 'medium', 'Annualized share-price growth since last snapshot.'),
+          : sourced<number>(
+              round(rwa.value),
+              'on-chain',
+              rwa.confidence,
+              rwa.note ?? 'Annualized share-price growth since last snapshot.',
+            ),
     });
   }
 
@@ -100,11 +107,32 @@ function annualizedSharePriceApy(scan: WalletScan, previous: Snapshot | null): S
         '(Tue/Fri) — take a snapshot now and another >=4 days later for a meaningful reading.',
     );
   }
-  const dtSeconds = scan.network ? Math.max(1, Math.floor(Date.now() / 1000) - previous.takenAt) : 1;
+  const dtSeconds = Math.max(1, Math.floor(Date.now() / 1000) - previous.takenAt);
+  // Enforce a minimum interval: below it, annualizing a tiny move is meaningless.
+  if (dtSeconds < THRESHOLDS.minSnapshotIntervalSeconds) {
+    return sourced<number>(
+      null,
+      'on-chain',
+      'low',
+      `Snapshots are only ${Math.round(dtSeconds / 3600)}h apart; need >=` +
+        `${Math.round(THRESHOLDS.minSnapshotIntervalSeconds / 86_400)} days to annualize Tulipa's ~twice-weekly ` +
+        'share-price update without producing a meaningless figure.',
+    );
+  }
   const growth = now / prevPos.sharePrice - 1; // fractional growth over the interval
   const apy = ((1 + growth) ** (THRESHOLDS.secondsPerYear / dtSeconds) - 1) * 100;
   if (!Number.isFinite(apy)) {
     return sourced<number>(null, 'on-chain', 'low', 'Share price unchanged or interval too short to annualize.');
+  }
+  // Flag implausibly high annualized figures (short/volatile interval artifact).
+  if (Math.abs(apy) > THRESHOLDS.maxPlausibleApyPct) {
+    return sourced<number>(
+      round(apy),
+      'on-chain',
+      'low',
+      `Implausibly high annualized figure (>${THRESHOLDS.maxPlausibleApyPct}%) from a small move over a short ` +
+        'interval — treat as noise, not a real yield. Use a longer snapshot gap.',
+    );
   }
   return sourced(round(apy), 'on-chain', 'medium');
 }

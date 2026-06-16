@@ -13,6 +13,23 @@ value is tagged with its source: `[on-chain]`, `[api]`, or `[static]`.
 
 ---
 
+## Contents
+
+- [What it analyzes](#what-it-analyzes-verified-on-mainnet-2026-06-16--see-verificationmd)
+- [The six layers](#the-six-layers-each-a-command)
+- [Data sources & integrations](#data-sources--integrations)
+- [Setup](#setup)
+- [Usage](#usage)
+- [Pharos Watch API](#pharos-watch-api-the-api-data-source)
+- [Real example output](#real-example-output-default-owner-wallet-live-mainnet)
+- [Output for agents (`--json` shape)](#output-for-agents---json-shape)
+- [Confirmed vs Degraded](#confirmed-vs-degraded-per-layer)
+- [Phase-2 signing readiness](#phase-2-signing-readiness-from-verificationmd--this-app-signs-nothing)
+- [Tests](#tests)
+- [Architecture](#architecture)
+
+---
+
 ## What it analyzes (verified on mainnet 2026-06-16 — see `VERIFICATION.md`)
 
 | Product | What it is | Address | Status |
@@ -38,6 +55,22 @@ value is tagged with its source: `[on-chain]`, `[api]`, or `[static]`.
 `report` runs all six. `report --json` emits one structured object — **the bridge
 to the Phase-2 agent.** `verify` re-runs the Step-0 live checks. `snapshot` saves
 the current state so `diff` has something to compare against later.
+
+---
+
+## Data sources & integrations
+
+The analyzer pulls from three live sources and nothing else — no database, no
+cached fixtures, no third-party indexers:
+
+| Source | Endpoint / address | Used for | Auth |
+| --- | --- | --- | --- |
+| **Pharos mainnet RPC** | `https://rpc.pharos.xyz` (chain **1672**) | all on-chain reads (lending, vault, oracle, incentives, AA predeploys) | none |
+| **Multicall3** | `0xcA11bde05977b3631167028862bE2a173976CA11` | batches every read into one call at a **pinned block** | none |
+| **Pharos Watch API** | `https://api.pharos.watch` | independent NAV / stablecoin-depeg reference (the `[api]` source) | `X-API-Key` (optional) |
+
+The RPC and Multicall3 are mandatory; the Pharos Watch API is optional and the
+`nav` layer degrades to on-chain-only without it. See [Pharos Watch API](#pharos-watch-api-the-api-data-source).
 
 ---
 
@@ -74,6 +107,49 @@ npm run verify                                   # re-run Step-0 live verificati
 Flags: `--address` (defaults to the verified owner wallet), `--json` (structured
 output), `--allow-testnet` (permit chain 688688; **mainnet is the default and the
 network of all results**).
+
+---
+
+## Pharos Watch API (the `[api]` data source)
+
+The `nav` layer uses [**Pharos Watch**](https://pharos.watch) — Pharos's NAV/depeg
+analytics service (repo `TokenBrice/pharos-watch`, upstream data from DefiLlama) —
+as an **independent, off-chain peg reference** that cross-checks the on-chain
+signals. It is wrapped by `scripts/pharoswatch.ts`. All response shapes below were
+**confirmed against the live API with a real key** (see `VERIFICATION.md` §E), not
+guessed.
+
+**Base URL:** `https://api.pharos.watch`
+**Auth:** every data route requires an `X-API-Key` header; `/api/health` is exempt.
+
+**Get a key:** request a self-serve key at <https://pharos.watch/api/>, then put it
+in `.env` as `PHAROS_WATCH_API_KEY`. The key lives **only** in the gitignored `.env`
+and is never committed or logged.
+
+**Endpoints this skill calls:**
+
+| Endpoint | Key? | What we read | Where it shows up |
+| --- | --- | --- | --- |
+| `GET /api/health` | no | `status`, upstream provider (DefiLlama) | `verify` "Pharos Watch" line; reachability gate |
+| `GET /api/peg-summary` | yes | `coins[]` → `currentDeviationBps`, `pegScore`, `activeDepeg`, `worstDeviationBps`, `priceConfidence`, `priceUpdatedAt` | `nav` layer `[api]` peg flag (e.g. `usdc-circle`) |
+
+The client fetches `peg-summary` **once per run** (cached) and resolves the
+reference stablecoin id `usdc-circle` from it. A coin is flagged depegged if
+Pharos Watch reports `activeDepeg: true` **or** its deviation exceeds the configured
+`depegDriftPct` threshold.
+
+**What we deliberately do *not* use:** `/api/stablecoin/{id}` returns descriptive
+issuer metadata with no leading live price, so it is never used for pricing. Pharos
+Watch tracks **global stablecoin issuers** (e.g. `usdc-circle`), **not** the
+Pharos-native vault token `tulPRWA` — so Tulipa's NAV always comes from the on-chain
+ERC-4626 share price, and the API only adds an issuer-level peg reference beside it.
+(The full catalogue is at <https://pharos.watch/openapi.json> — 38 routes; this skill
+intentionally consumes only the two above.)
+
+**Graceful degradation:** with no key (or if the API is unreachable), the `nav`
+layer still runs entirely on-chain — share-price drift for the vault and oracle-price
+drift for USDC — and the output explicitly says the API portion is unavailable.
+Nothing is faked to fill the gap.
 
 ---
 
@@ -127,14 +203,52 @@ Pharos Watch    : health ✓ status=healthy upstream=DefiLlama key=not set
 
 ---
 
+## Output for agents (`--json` shape)
+
+`report --json` emits one structured, source-labeled object — the bridge a
+downstream (Phase-2) agent consumes. Top-level shape:
+
+```jsonc
+{
+  "meta": {
+    "generatedAt": 1718539200,           // unix seconds
+    "address": "0x0Ac6…9f95",
+    "network": { "chainId": "1672", "block": 10228494 },  // the pinned block
+    "readOnly": true                      // this skill never signs
+  },
+  "snapshot":   { /* reproducible position snapshot at the pinned block */ },
+  "eligibility":{ "layer": "eligibility", "entries": [ … ] },
+  "maturity":   { "layer": "maturity",    "entries": [ … ] },
+  "trueyield":  { "layer": "trueyield",   "entries": [ … ] },
+  "risk":       { "layer": "risk", "totalUsd": { … }, "perPosition": [ … ],
+                  "mostFragile": { … }, "concentrationWarnings": [ … ] },
+  "nav":        { "layer": "nav", "apiAvailable": false, "apiNote": "…", "flags": [ … ] },
+  "diff":       { "layer": "diff", "hasPrevious": false, "changes": [ … ], "summary": { … } },
+  "errors":     [ /* any per-venue degraded reads, never silently dropped */ ]
+}
+```
+
+Every leaf value that the skill reports is a `Sourced<T>`:
+
+```jsonc
+{ "value": 1.131317, "source": "on-chain", "confidence": "high", "note": "…optional…" }
+```
+
+**Contract for consumers:** trust `value` according to `source`
+(`on-chain`/`api` = live, `static` = off-chain hint) and `confidence`; a `null`
+`value` means it could not be sourced — **do not fabricate a replacement.** Single
+commands (e.g. `trueyield --json`) emit `{ address, <layer> }` with the same shapes.
+
+---
+
 ## Confirmed vs Degraded (per layer)
 
 | Layer | Status | Detail |
 | --- | --- | --- |
 | eligibility | ✅ Confirmed | reserve active/frozen flags + access map, all on-chain |
-| maturity | ✅ / ⚠ | ERC-4626 redemption limits on-chain; true off-chain maturity dates labeled `[static]` and only shown if actually known (none fabricated) |
-| trueyield | ✅ Confirmed | base APY from `currentLiquidityRate`; RWA income from share-price snapshots; incentives labeled, never folded into the number |
-| risk | ✅ Confirmed | oracle USD pricing (8-decimal) + health-factor/liquidation distance + concentration |
+| maturity | ✅ / ⚠ | ERC-4626 redemption limits on-chain; lending "redeemable now" bounded by real pool liquidity (`min(supplied, aToken underlying balance)`); off-chain maturity dates labeled `[static]`, none fabricated |
+| trueyield | ✅ Confirmed | base APY from `currentLiquidityRate`; RWA income from share-price snapshots (min 3-day interval enforced; implausible annualized figures flagged low-confidence); incentives labeled, never folded into the number |
+| risk | ✅ Confirmed | oracle USD pricing (8-decimal); aggregate **and per-collateral** liquidation distance; concentration; total degrades to `[static]`/low if any price can't be sourced |
 | nav | ✅ Confirmed | on-chain share-price/oracle drift always; with `PHAROS_WATCH_API_KEY` set, adds verified `[api]` peg from `/api/peg-summary` (deviation bps + pegScore) |
 | diff | ✅ Confirmed | local JSON snapshots under `./snapshots`, pure reads |
 
@@ -166,9 +280,14 @@ All account-abstraction predeploys below are **confirmed deployed on mainnet**
 npm test   # live integration tests against mainnet (no mocks)
 ```
 
-9 checks assert real on-chain invariants that catch the classic failure modes
-(wrong network, wrong decimals, unscaled ray APY, wrong oracle base unit, broken
-source-labeling). They exercise the real modules — no mocked data is introduced.
+19 checks total. The **live** checks assert real on-chain invariants that catch
+the classic failure modes (wrong network, wrong decimals, unscaled ray APY, wrong
+oracle base unit, broken source-labeling, withdrawable-exceeds-liquidity). The
+**pure-logic** checks (`tests/unit.test.ts`) verify the diff engine and the
+per-collateral liquidation math with hand-built inputs — needed because the demo
+wallet carries no debt, so the liquidation path can't be triggered live. A
+key-gated test exercises the Pharos Watch `[api]` branch when `PHAROS_WATCH_API_KEY`
+is set, and self-skips (never fakes) when it isn't. No mocked chain data anywhere.
 
 ---
 
@@ -179,16 +298,24 @@ scripts/
   config.ts      network, verified addresses, Pharos Watch base, thresholds
   abi.ts         Aave-style + ERC-4626 + ERC20 ABIs (all exercised live)
   rpc.ts         provider + hard chain-id (1672) sanity gate
+  multicall.ts   Multicall3 batch reader + retry/backoff + pinned-block ReadCtx
   prices.ts      Aave oracle getAssetPrice reader (8-decimal, base-unit checked)
   lending.ts     OpenFi + ZonaLend reserve/user reads (per-venue adapters)
   vault.ts       Tulipa ERC-4626 reads (share price, redemption limits)
   pharoswatch.ts Pharos Watch API client (key-gated, degrades gracefully)
   snapshot.ts    local JSON snapshots for diff
-  collect.ts     one-pass collector feeding all layers
+  collect.ts     one-pass collector feeding all layers (one pinned block)
   types.ts       Sourced<T> — structural enforcement of source labeling
   layers/        eligibility · maturity · trueyield · risk · nav · diff
   cli.ts         commands + --json + --address
 ```
+
+**Consistency & performance.** Every read in a run is batched through Multicall3
+(`0xcA11…CA11`, verified deployed on Pharos) at a single **pinned block**, so all
+numbers in one report — and any saved snapshot — are internally consistent and
+reproducible. Transient RPC errors are retried with backoff; a genuine revert is
+never papered over. CI (`.github/workflows/ci.yml`) runs the strict typecheck and
+the live test suite on every push/PR.
 
 Built with strict TypeScript (`strict: true`), ethers v6, real error handling.
 Run `npm run typecheck` to confirm a clean compile.

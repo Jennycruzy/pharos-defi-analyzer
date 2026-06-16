@@ -27,19 +27,30 @@ export interface MaturityResult {
 export function analyzeMaturity(scan: WalletScan): MaturityResult {
   const entries: MaturityEntry[] = [];
 
-  // Lending positions: open-term, withdrawable subject to available liquidity.
+  // Lending positions: open-term. Withdrawable NOW is bounded by the pool's
+  // actual on-chain liquidity (underlying held by the aToken), not just the
+  // supplied balance — so an illiquid market is reported honestly.
   for (const l of scan.lending) {
     for (const p of l.positions) {
       if (p.suppliedAmount > 0) {
+        const liquidityLimited = p.withdrawableNow < p.suppliedAmount - 1e-9;
         entries.push({
           product: l.product,
           asset: p.symbol,
           status: sourced(
-            'Open-term supply (no fixed maturity). Withdrawable on demand subject to pool liquidity.',
+            liquidityLimited
+              ? `Open-term supply (no fixed maturity), but pool liquidity currently caps an instant ` +
+                  `withdrawal at ${round(p.withdrawableNow)} of your ${round(p.suppliedAmount)} ${p.symbol}.`
+              : 'Open-term supply (no fixed maturity). Fully withdrawable on demand — pool liquidity covers your balance.',
             'on-chain',
             'high',
           ),
-          redeemableNow: sourced(p.suppliedAmount, 'on-chain', 'medium', 'Subject to available pool liquidity.'),
+          redeemableNow: sourced(
+            round(p.withdrawableNow),
+            'on-chain',
+            'high',
+            liquidityLimited ? 'Capped by current available pool liquidity.' : undefined,
+          ),
         });
       }
     }
@@ -65,4 +76,8 @@ export function analyzeMaturity(scan: WalletScan): MaturityResult {
   }
 
   return { layer: 'maturity', entries };
+}
+
+function round(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
 }

@@ -278,6 +278,15 @@ function printRisk(scan: WalletScan): void {
   }
   const f = r.mostFragile.value;
   console.log(`• Most fragile: ${f ? f.note : '—'} ${TAG[r.mostFragile.source]}`);
+  if (f && f.perCollateral.length) {
+    for (const c of f.perCollateral) {
+      const drop = c.priceDropToLiquidationPct;
+      console.log(
+        `    ${c.product} ${c.asset}: $${trim(c.collateralUsd)} collateral (LT ${c.liquidationThresholdPct}%) — ` +
+          `${drop === null ? 'not a binding collateral' : `~${trim(drop)}% drop in ${c.asset} alone → liquidation`}`,
+      );
+    }
+  }
   if (r.concentrationWarnings.length) {
     for (const w of r.concentrationWarnings) console.log(`• ⚠ ${w}`);
   } else {

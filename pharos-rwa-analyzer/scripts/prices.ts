@@ -9,6 +9,7 @@
 import { ethers } from 'ethers';
 import { ORACLE_ABI } from './abi.js';
 import { USD_BASE } from './config.js';
+import { withRetry, type ReadCtx } from './multicall.js';
 import { getProvider } from './rpc.js';
 
 export class PriceOracle {
@@ -20,10 +21,11 @@ export class PriceOracle {
   }
 
   /** Reads (and caches) the oracle's USD base unit; falls back to verified 1e8. */
-  private async getBaseUnit(): Promise<bigint> {
+  private async getBaseUnit(ctx?: ReadCtx): Promise<bigint> {
     if (this.baseUnit !== null) return this.baseUnit;
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
     try {
-      const unit = (await this.contract.BASE_CURRENCY_UNIT()) as bigint;
+      const unit = (await this.contract.BASE_CURRENCY_UNIT(overrides)) as bigint;
       this.baseUnit = unit > 0n ? unit : USD_BASE;
     } catch {
       // Some oracles don't expose BASE_CURRENCY_UNIT; the verified Pharos value is 1e8.
@@ -33,10 +35,11 @@ export class PriceOracle {
   }
 
   /** USD price of one whole token, as a JS number. Throws on revert (caller degrades). */
-  async getUsdPrice(assetAddress: string): Promise<number> {
+  async getUsdPrice(assetAddress: string, ctx?: ReadCtx): Promise<number> {
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
     const [raw, base] = await Promise.all([
-      this.contract.getAssetPrice(assetAddress) as Promise<bigint>,
-      this.getBaseUnit(),
+      withRetry(() => this.contract.getAssetPrice(assetAddress, overrides) as Promise<bigint>, 'oracle.getAssetPrice'),
+      this.getBaseUnit(ctx),
     ]);
     // Keep precision: divide as floating after scaling, base is 1e8 so safe in double.
     return Number(raw) / Number(base);

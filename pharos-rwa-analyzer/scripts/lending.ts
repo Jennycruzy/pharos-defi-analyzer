@@ -5,11 +5,17 @@
  * RE-RESOLVED from the pool's own ADDRESSES_PROVIDER at runtime (so ZonaLend is
  * never assumed equal to OpenFi). Rates are decoded from the named struct field
  * `currentLiquidityRate` (ray, 1e27) and annualized to both APR and compounded APY.
+ *
+ * All reserve/user reads go through Multicall3 at a PINNED block (one eth_call,
+ * one consistent block) instead of N sequential round-trips. Available pool
+ * liquidity (the underlying balance held by the aToken) is read so callers can
+ * report true on-demand withdrawability, not just the supplied amount.
  */
 
 import { ethers } from 'ethers';
-import { ADDRESSES_PROVIDER_ABI, DATA_PROVIDER_ABI, POOL_ABI } from './abi.js';
+import { ADDRESSES_PROVIDER_ABI, DATA_PROVIDER_ABI, ERC20_ABI, POOL_ABI } from './abi.js';
 import { LENDING_VENUES, RAY, THRESHOLDS } from './config.js';
+import { aggregate3, withRetry, type Call3, type ReadCtx } from './multicall.js';
 import { PriceOracle } from './prices.js';
 import { getProvider } from './rpc.js';
 
@@ -27,6 +33,8 @@ export interface ReserveInfo {
   liquidationThresholdPct: number;
   isActive: boolean;
   isFrozen: boolean;
+  /** Underlying units currently available in the pool (aToken's underlying balance). */
+  availableLiquidity: number;
 }
 
 export interface UserReservePosition {
@@ -36,6 +44,10 @@ export interface UserReservePosition {
   suppliedAmount: number; // human units of underlying (aToken balance ~ underlying)
   borrowedAmount: number; // human units (stable + variable debt)
   supplyAprPct: number;
+  liquidationThresholdPct: number;
+  usageAsCollateral: boolean;
+  /** Underlying units redeemable on demand right now = min(supplied, pool liquidity). */
+  withdrawableNow: number;
 }
 
 export interface UserAccount {
@@ -48,6 +60,10 @@ export interface UserAccount {
 }
 
 const MAX_UINT = (1n << 256n) - 1n;
+
+const POOL_IFACE = new ethers.Interface(POOL_ABI);
+const DATA_PROVIDER_IFACE = new ethers.Interface(DATA_PROVIDER_ABI);
+const ERC20_IFACE = new ethers.Interface(ERC20_ABI);
 
 /** APR (ray) -> compounded APY %, matching Aave's per-second compounding model. */
 function rayAprToApyPct(rateRay: bigint): number {
@@ -65,7 +81,7 @@ export class LendingVenueAdapter {
   readonly venue: string;
   readonly access: VenueConfig['access'];
   private readonly pool: ethers.Contract;
-  private dataProvider: ethers.Contract;
+  private dataProviderAddress: string;
   private oracle: PriceOracle;
 
   constructor(private readonly cfg: VenueConfig) {
@@ -74,7 +90,7 @@ export class LendingVenueAdapter {
     this.venue = cfg.venue;
     this.access = cfg.access;
     this.pool = new ethers.Contract(cfg.pool, POOL_ABI, provider);
-    this.dataProvider = new ethers.Contract(cfg.dataProvider, DATA_PROVIDER_ABI, provider);
+    this.dataProviderAddress = cfg.dataProvider;
     this.oracle = new PriceOracle(cfg.oracle);
   }
 
@@ -86,55 +102,97 @@ export class LendingVenueAdapter {
    * Re-resolve oracle + data provider from the live ADDRESSES_PROVIDER and adopt
    * them if they differ from the hardcoded config. Never assume; verify.
    */
-  async refreshResolvedAddresses(): Promise<{ oracle: string; dataProvider: string }> {
+  async refreshResolvedAddresses(ctx?: ReadCtx): Promise<{ oracle: string; dataProvider: string }> {
     const ap = new ethers.Contract(this.cfg.addressesProvider, ADDRESSES_PROVIDER_ABI, getProvider());
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
     const [liveOracle, liveDp] = await Promise.all([
-      ap.getPriceOracle() as Promise<string>,
-      ap.getPoolDataProvider() as Promise<string>,
+      withRetry(() => ap.getPriceOracle(overrides) as Promise<string>, `${this.product}.getPriceOracle`),
+      withRetry(() => ap.getPoolDataProvider(overrides) as Promise<string>, `${this.product}.getPoolDataProvider`),
     ]);
     if (liveOracle && liveOracle.toLowerCase() !== this.cfg.oracle.toLowerCase()) {
       this.oracle = new PriceOracle(liveOracle);
     }
-    if (liveDp && liveDp.toLowerCase() !== this.cfg.dataProvider.toLowerCase()) {
-      this.dataProvider = new ethers.Contract(liveDp, DATA_PROVIDER_ABI, getProvider());
+    if (liveDp && liveDp.toLowerCase() !== this.dataProviderAddress.toLowerCase()) {
+      this.dataProviderAddress = liveDp;
     }
-    return { oracle: this.oracle.oracleAddress, dataProvider: await this.dataProvider.getAddress() };
+    return { oracle: this.oracle.oracleAddress, dataProvider: this.dataProviderAddress };
   }
 
-  /** All reserves with their rates and risk config (Aave struct, named fields). */
-  async getReserves(): Promise<ReserveInfo[]> {
-    const tokens = (await this.dataProvider.getAllReservesTokens()) as Array<{
-      symbol: string;
-      tokenAddress: string;
-    }>;
-    const reserves: ReserveInfo[] = [];
+  /** All reserves with rates, risk config, and available liquidity (batched via Multicall3). */
+  async getReserves(ctx?: ReadCtx): Promise<ReserveInfo[]> {
+    const dp = new ethers.Contract(this.dataProviderAddress, DATA_PROVIDER_ABI, getProvider());
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    const tokens = (await withRetry(
+      () => dp.getAllReservesTokens(overrides),
+      `${this.product}.getAllReservesTokens`,
+    )) as Array<{ symbol: string; tokenAddress: string }>;
+
+    // Round 1: reserve data (pool) + configuration (data provider), one batch.
+    const round1: Call3[] = [];
     for (const t of tokens) {
-      const [rd, cfg] = await Promise.all([
-        this.pool.getReserveData(t.tokenAddress),
-        this.dataProvider.getReserveConfigurationData(t.tokenAddress),
-      ]);
-      reserves.push({
-        symbol: t.symbol,
-        address: t.tokenAddress,
-        aTokenAddress: rd.aTokenAddress as string,
-        decimals: Number(cfg.decimals),
-        supplyAprPct: rayToAprPct(rd.currentLiquidityRate as bigint),
-        supplyApyPct: rayAprToApyPct(rd.currentLiquidityRate as bigint),
-        variableBorrowAprPct: rayToAprPct(rd.currentVariableBorrowRate as bigint),
-        ltvPct: Number(cfg.ltv) / 100,
-        liquidationThresholdPct: Number(cfg.liquidationThreshold) / 100,
-        isActive: Boolean(cfg.isActive),
-        isFrozen: Boolean(cfg.isFrozen),
+      round1.push({
+        target: this.cfg.pool,
+        allowFailure: false,
+        callData: POOL_IFACE.encodeFunctionData('getReserveData', [t.tokenAddress]),
+      });
+      round1.push({
+        target: this.dataProviderAddress,
+        allowFailure: false,
+        callData: DATA_PROVIDER_IFACE.encodeFunctionData('getReserveConfigurationData', [t.tokenAddress]),
       });
     }
-    return reserves;
+    const r1 = await aggregate3(round1, ctx);
+
+    // Round 2: available liquidity = underlying balanceOf(aToken), one batch.
+    const decoded = tokens.map((t, i) => {
+      const rd = POOL_IFACE.decodeFunctionResult('getReserveData', r1[i * 2]!.returnData)[0];
+      const cfg = DATA_PROVIDER_IFACE.decodeFunctionResult('getReserveConfigurationData', r1[i * 2 + 1]!.returnData);
+      return { token: t, rd, cfg };
+    });
+    const round2: Call3[] = decoded.map((d) => ({
+      target: d.token.tokenAddress,
+      allowFailure: true, // a non-standard token shouldn't sink the whole scan
+      callData: ERC20_IFACE.encodeFunctionData('balanceOf', [d.rd.aTokenAddress as string]),
+    }));
+    const r2 = await aggregate3(round2, ctx);
+
+    return decoded.map((d, i) => {
+      const decimals = Number(d.cfg.decimals);
+      let availableLiquidity = 0;
+      const res = r2[i];
+      if (res && res.success) {
+        const bal = ERC20_IFACE.decodeFunctionResult('balanceOf', res.returnData)[0] as bigint;
+        availableLiquidity = Number(ethers.formatUnits(bal, decimals));
+      }
+      return {
+        symbol: d.token.symbol,
+        address: d.token.tokenAddress,
+        aTokenAddress: d.rd.aTokenAddress as string,
+        decimals,
+        supplyAprPct: rayToAprPct(d.rd.currentLiquidityRate as bigint),
+        supplyApyPct: rayAprToApyPct(d.rd.currentLiquidityRate as bigint),
+        variableBorrowAprPct: rayToAprPct(d.rd.currentVariableBorrowRate as bigint),
+        ltvPct: Number(d.cfg.ltv) / 100,
+        liquidationThresholdPct: Number(d.cfg.liquidationThreshold) / 100,
+        isActive: Boolean(d.cfg.isActive),
+        isFrozen: Boolean(d.cfg.isFrozen),
+        availableLiquidity,
+      };
+    });
   }
 
-  /** The wallet's supplied/borrowed amount per reserve (only non-zero ones). */
-  async getUserPositions(user: string, reserves: ReserveInfo[]): Promise<UserReservePosition[]> {
+  /** The wallet's supplied/borrowed amount per reserve (only non-zero ones), batched. */
+  async getUserPositions(user: string, reserves: ReserveInfo[], ctx?: ReadCtx): Promise<UserReservePosition[]> {
+    const calls: Call3[] = reserves.map((r) => ({
+      target: this.dataProviderAddress,
+      allowFailure: false,
+      callData: DATA_PROVIDER_IFACE.encodeFunctionData('getUserReserveData', [r.address, user]),
+    }));
+    const results = await aggregate3(calls, ctx);
+
     const out: UserReservePosition[] = [];
-    for (const r of reserves) {
-      const d = await this.dataProvider.getUserReserveData(r.address, user);
+    reserves.forEach((r, i) => {
+      const d = DATA_PROVIDER_IFACE.decodeFunctionResult('getUserReserveData', results[i]!.returnData);
       const supplied = Number(ethers.formatUnits(d.currentATokenBalance as bigint, r.decimals));
       const debt =
         Number(ethers.formatUnits(d.currentStableDebt as bigint, r.decimals)) +
@@ -147,15 +205,23 @@ export class LendingVenueAdapter {
           suppliedAmount: supplied,
           borrowedAmount: debt,
           supplyAprPct: r.supplyAprPct,
+          liquidationThresholdPct: r.liquidationThresholdPct,
+          usageAsCollateral: Boolean(d.usageAsCollateralEnabled),
+          // Real on-demand withdrawability is bounded by what the pool actually holds.
+          withdrawableNow: Math.min(supplied, r.availableLiquidity),
         });
       }
-    }
+    });
     return out;
   }
 
   /** Aggregate account health (8-decimal USD base; HF in 1e18). */
-  async getUserAccount(user: string): Promise<UserAccount> {
-    const a = await this.pool.getUserAccountData(user);
+  async getUserAccount(user: string, ctx?: ReadCtx): Promise<UserAccount> {
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    const a = await withRetry(
+      () => this.pool.getUserAccountData(user, overrides),
+      `${this.product}.getUserAccountData`,
+    );
     const hfRaw = a.healthFactor as bigint;
     return {
       totalCollateralUsd: Number(a.totalCollateralBase) / 1e8,

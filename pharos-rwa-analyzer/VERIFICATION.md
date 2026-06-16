@@ -1,4 +1,4 @@
-# VERIFICATION.md — Step 0 Live-Mainnet Results
+niremo# VERIFICATION.md — Step 0 Live-Mainnet Results
 
 Every line below was confirmed against **live Pharos mainnet (chain 1672)** and
 the real Pharos Watch API on **2026-06-16**. Nothing here is assumed. Where a
@@ -153,6 +153,19 @@ never deposits.
   ERC-4626 share price, and the API only adds the issuer-level peg reference.
 - Live cross-check: API `usdc-circle` (−0.01%) agrees with the OpenFi oracle
   (−0.03%). Independent sources, both healthy, each labeled distinctly.
+
+---
+
+## F. Multicall3 — ✅ CONFIRMED deployed (read batching + block pinning)
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | on-chain, 3,808 B bytecode |
+
+The analyzer batches all reserve/user/oracle reads through Multicall3 at a single
+**pinned block** (`scripts/multicall.ts` + `collect.ts`), so every value in one
+report is internally consistent and a saved snapshot is reproducible. Transient RPC
+errors retry with backoff; genuine reverts are never swallowed.
 
 ---
 

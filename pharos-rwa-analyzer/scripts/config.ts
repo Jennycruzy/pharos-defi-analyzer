@@ -63,15 +63,16 @@ export const TULIPA = {
 
 /**
  * pAlpha — gated institutional vault surfaced via AquaFlux. We have NO verified
- * on-chain address, so it is a READ-ONLY STATIC benchmark only: never treated as
- * actionable, never read on-chain, its ~14% APY labeled [static] / advertised.
+ * on-chain address and no verifiable APY, so it is listed ONLY as a gated, not-
+ * actionable benchmark: never read on-chain, no fabricated yield number. (An
+ * advertised ~14% APY circulates off-chain but is intentionally NOT hardcoded
+ * here — config holds verified facts only. Add it as [static] if/when sourced.)
  */
 export const PALPHA = {
   product: 'pAlpha',
   venue: 'pAlpha (gated institutional vault, via AquaFlux)',
   access: 'gated' as const,
-  advertisedApyPct: 14,
-  note: 'Gated institutional vault. No verified on-chain address for this wallet; benchmark only.',
+  note: 'Gated institutional vault. No verified on-chain address or APY for this wallet; listed as a benchmark only.',
 } as const;
 
 /** ERC-4337 EntryPoint (v0.7) — confirmed deployed; Phase-2 prep only (this app signs nothing). */
@@ -117,6 +118,18 @@ export const THRESHOLDS = {
   depegDriftPct: 1.0,
   /** Seconds per year used to annualize APR -> APY and share-price drift. */
   secondsPerYear: 31_536_000,
+  /**
+   * Minimum gap between snapshots before we annualize Tulipa share-price growth.
+   * Below this, a tiny move annualizes into a meaningless huge number, so we
+   * decline to report a figure. Tulipa updates ~twice weekly, so 3 days is a floor.
+   */
+  minSnapshotIntervalSeconds: 3 * 86_400,
+  /**
+   * Any annualized RWA APY above this is treated as implausible (short/volatile
+   * interval artifact) and reported with low confidence + a caution, never as a
+   * confident headline number.
+   */
+  maxPlausibleApyPct: 100,
 } as const;
 
 export const RAY = 10n ** 27n; // Aave fixed-point base for interest rates

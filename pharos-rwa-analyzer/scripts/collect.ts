@@ -14,6 +14,7 @@ import {
   type UserReservePosition,
 } from './lending.js';
 import { readIncentives, type IncentiveInfo } from './incentives.js';
+import { type ReadCtx } from './multicall.js';
 import { assertPharosNetwork, type NetworkCheck } from './rpc.js';
 import { TulipaVault, type VaultInfo, type VaultPosition } from './vault.js';
 import { PharosWatchClient, type WatchHealth } from './pharoswatch.js';
@@ -44,6 +45,8 @@ export interface VaultScan {
 export interface WalletScan {
   address: string;
   network: NetworkCheck;
+  /** Block every read in this scan was pinned to (consistency + reproducibility). */
+  block: number;
   lending: LendingScan[];
   vault: VaultScan | null;
   watch: { configured: boolean; health: WatchHealth };
@@ -54,13 +57,14 @@ async function scanLendingVenue(
   adapter: LendingVenueAdapter,
   address: string,
   errors: AnalyzerError[],
+  ctx: ReadCtx,
 ): Promise<LendingScan | null> {
   try {
-    const resolved = await adapter.refreshResolvedAddresses();
-    const reserves = await adapter.getReserves();
+    const resolved = await adapter.refreshResolvedAddresses(ctx);
+    const reserves = await adapter.getReserves(ctx);
     const [positions, account] = await Promise.all([
-      adapter.getUserPositions(address, reserves),
-      adapter.getUserAccount(address),
+      adapter.getUserPositions(address, reserves, ctx),
+      adapter.getUserAccount(address, ctx),
     ]);
     // Price every reserve asset once via this venue's oracle, and read its
     // on-chain incentive config (verified [on-chain] base for the incentive note).
@@ -70,12 +74,12 @@ async function scanLendingVenue(
     const nowSeconds = Math.floor(Date.now() / 1000);
     for (const r of reserves) {
       try {
-        assetUsd[r.address.toLowerCase()] = await oracle.getUsdPrice(r.address);
+        assetUsd[r.address.toLowerCase()] = await oracle.getUsdPrice(r.address, ctx);
       } catch (err) {
         errors.push({ scope: `${adapter.product} price ${r.symbol}`, message: errMsg(err) });
       }
       try {
-        incentives[r.address.toLowerCase()] = await readIncentives(r.aTokenAddress, nowSeconds);
+        incentives[r.address.toLowerCase()] = await readIncentives(r.aTokenAddress, nowSeconds, ctx);
       } catch (err) {
         errors.push({ scope: `${adapter.product} incentives ${r.symbol}`, message: errMsg(err) });
       }
@@ -101,18 +105,20 @@ async function scanLendingVenue(
 export async function collectWalletScan(address: string, allowTestnet = false): Promise<WalletScan> {
   const errors: AnalyzerError[] = [];
   const network = await assertPharosNetwork(allowTestnet);
+  // Pin the block once: every read below is consistent and the snapshot is reproducible.
+  const ctx: ReadCtx = { blockTag: network.blockNumber };
 
   const adapters = getLendingAdapters();
-  const lendingResults = await Promise.all(adapters.map((a) => scanLendingVenue(a, address, errors)));
+  const lendingResults = await Promise.all(adapters.map((a) => scanLendingVenue(a, address, errors, ctx)));
   const lending = lendingResults.filter((x): x is LendingScan => x !== null);
 
   // Vault scan.
   let vault: VaultScan | null = null;
   try {
     const tv = new TulipaVault();
-    const info = await tv.getInfo();
+    const info = await tv.getInfo(ctx);
     if (info) {
-      const position = await tv.getPosition(address, info);
+      const position = await tv.getPosition(address, info, ctx);
       // Resolve the vault asset's USD price from any venue oracle that prices it.
       let assetUsd: number | null = null;
       for (const l of lending) {
@@ -137,6 +143,7 @@ export async function collectWalletScan(address: string, allowTestnet = false): 
   return {
     address,
     network,
+    block: ctx.blockTag,
     lending,
     vault,
     watch: { configured: watchClient.isConfigured(), health },

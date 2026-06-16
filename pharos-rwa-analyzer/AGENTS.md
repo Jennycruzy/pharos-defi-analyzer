@@ -1,106 +1,96 @@
-# AGENTS.md — Pharos RWA Position Analyzer
+# AGENTS.md — how an AI agent uses the Pharos RWA Position Analyzer
 
-Read-only DeFi/RWA position analyzer for **Pharos mainnet (chain 1672)**. This
-file orients any coding agent working in this repo.
+This file teaches an AI agent how to obtain and use this skill **in natural
+language**. If you are an agent that has just discovered or downloaded this skill,
+read this top to bottom — it is everything you need to call it correctly and
+interpret what comes back.
 
-## Non-negotiable rules (HARD RULES)
+## What this skill does
 
-0. **Mainnet only (1672).** Mainnet is the default and the network of every
-   result. A `--allow-testnet` (688688) toggle exists only as a convenience.
-1. **Never assume — verify on-chain.** Every address/ABI/decimal/field must be
-   confirmed against live mainnet (or the named API) before relying on it. If you
-   can't verify, document it and degrade gracefully.
-2. **No mocks, no fakes.** Every printed value is a real on-chain read or the real
-   Pharos Watch API. Can't source it? Omit it and say why. Never fabricate.
-3. **Strict TypeScript, ethers v6.** `npm run typecheck` must stay clean. Small
-   focused modules, real error handling, no `any` without a justifying comment.
-4. **Self-correct.** After changes, run the command live against a real wallet and
-   `npm run typecheck`. A nonsense number (e.g. 4,000,000% APY) means wrong
-   address/ABI/decimals/network/ray-scaling — diagnose and fix.
-5. **Honesty in output.** Each value is labeled `[on-chain]` / `[api]` / `[static]`.
-6. **Read-only.** This project signs nothing. Signing belongs to Phase 2.
+It is a **read-only** analyzer for a wallet's DeFi + real-world-asset (RWA)
+positions on **Pharos mainnet (chain 1672)**. Given a wallet address, it tells you:
 
-## Layout
+- **eligibility** — can this wallet actually act on each product, or is it gated?
+- **maturity** — when can the wallet exit; how much is redeemable right now?
+- **trueyield** — the real, comparable yield after stripping out unverified incentives.
+- **risk** — total USD exposure, the most fragile position, concentration warnings.
+- **nav** — is any token depegged / has a vault's NAV drifted?
+- **diff** — what changed since the last saved snapshot.
 
-- `scripts/config.ts` — verified addresses, thresholds, Pharos Watch base URL.
-- `scripts/{abi,rpc,prices}.ts` — ABIs, provider + chain-id gate, oracle reader.
-- `scripts/{lending,vault,pharoswatch,snapshot}.ts` — data adapters.
-- `scripts/collect.ts` — one-pass live collector → `WalletScan`.
-- `scripts/layers/*.ts` — six pure layer functions over a `WalletScan`.
-- `scripts/cli.ts` — command surface (`verify|eligibility|maturity|trueyield|risk|nav|diff|snapshot|report`, `--json`, `--address`).
-- `scripts/types.ts` — `Sourced<T>` structurally enforces source labeling.
+It covers **OpenFi**, **ZonaLend**, the **Tulipa** RWA vault, and the **pAlpha**
+benchmark. Every number is a live read, labeled by source, and **nothing is mocked**.
 
-## Verify / test
+**It never signs, never holds a key, and never moves funds.** If a user asks you to
+*execute* a transaction, this skill cannot do it — it only analyzes.
+
+## When to use it
+
+Invoke this skill whenever a user asks about a Pharos wallet's positions, yield,
+risk, eligibility, lockups/redemption, NAV or depeg status, or wants a position
+report — or whenever you (as a downstream agent) need structured, source-labeled
+position data before reasoning or acting.
+
+## How to download and set it up
 
 ```bash
-npm run typecheck                 # strict tsc, must be clean
-npm test                          # LIVE integration tests (no mocks) — 9 invariant checks
-npm run verify                    # live Step-0 checks (incl. AA predeploys)
-npm run analyze -- report         # full live report, default owner wallet
-npm run analyze -- report --json  # structured output (Phase-2 bridge)
+# 1. Get the skill (clone or copy the project directory), then:
+cd pharos-rwa-analyzer
+npm install
+
+# 2. (Optional) configure — sensible defaults are baked in, no keys required:
+cp .env.example .env
 ```
 
-## Ground truth
+Optional `.env` settings:
+- `PHAROS_RPC_URL` — override the default `https://rpc.pharos.xyz`.
+- `PHAROS_WATCH_API_KEY` — unlocks the live NAV/depeg API layer (see README "Pharos
+  Watch API"). Without it, the `nav` layer still works on-chain and says so.
+- `DEFAULT_ADDRESS` — the wallet to analyze when `--address` isn't given.
 
-`VERIFICATION.md` records the live Step-0 results and the Phase-2 signing-readiness
-findings (EntryPoint confirmed; bundler/factory still to confirm from docs). Re-run
-`npm run verify` before trusting any hardcoded address — re-resolution of oracle /
-data-provider happens at runtime per venue.
+## How to run it
 
-## Not done yet / open items (honest status)
+```bash
+npm run analyze -- <command> [--address 0x..] [--json] [--allow-testnet]
+```
 
-Phase 1 is complete and all six layers run live. These are the known gaps and
-the deliberate degradations — fix or confirm before relying on them:
+Commands: `verify`, `eligibility`, `maturity`, `trueyield`, `risk`, `nav`, `diff`,
+`snapshot`, `report`.
 
-- ✅ **RESOLVED — ZonaLend incentive source is now read on-chain.** `incentives.ts`
-  reads each aToken's `getIncentivesController()` → `getRewardsByAsset`/`getRewardsData`.
-  Verified: both OpenFi (`0x74C0…F67d`) and ZonaLend (`0xA9F4…A80C`) controllers are
-  deployed but list **0 active reward streams** for the USDC aToken. So `trueyield`'s
-  incentive note is now a `[on-chain]` high-confidence fact, not a guess. If a stream
-  ever becomes active, extend `incentives.ts` to price `emissionPerSecond` (needs the
-  reward token's decimals + USD price + aToken `totalSupply`) and surface an APY.
-- ✅ **RESOLVED — Pharos Watch NAV API is live and shape-verified.** A real key was
-  used to confirm the response shapes: `pharoswatch.ts` now reads `/api/peg-summary`
-  (`coins[].currentDeviationBps`/`pegScore`/`activeDepeg`) — verified field names, not
-  guesses. The `nav` layer emits an `[api]` peg line that cross-checks the on-chain
-  oracle. The key lives only in the gitignored `.env` (`PHAROS_WATCH_API_KEY`); never
-  committed. Without a key the layer still runs on-chain-only and says so. Optional
-  next step: key-gated `trueyield` enrichment from `/api/yield-rankings`
-  (`apyBase`/`apyReward`, documented schema).
-- **trueyield RWA-income needs ≥2 snapshots** (by design). It measures Tulipa
-  share-price growth between snapshots; on the very first run it reports `—`. Run
-  `snapshot`, wait, then `report`. ERC-4626 exposes no share-price history to shortcut this.
-- ✅ **RESOLVED — Tulipa has no maturity date (premise was wrong).** Ember's Pharos
-  vaults are **open-ended share-based-growth** vaults, not fixed-term instruments.
-  Confirmed: tulPRWA exposes no maturity/cooldown getter and is fully redeemable now
-  (`maxWithdraw` == balance), which the `maturity` layer already reports on-chain.
-  The real time dimension is a **withdrawal duration** (the sibling eEARN vault shows
-  "3 Days"; tulPRWA's isn't on-chain-readable). Ember updates share price **~twice
-  weekly (Tue/Fri)** — `trueyield` now tells users to space snapshots >=4 days apart.
-  NOTE: **eEARN (`0x9b…aFA2`) is a DIFFERENT vault** from tulPRWA (`0xbae9…aec5`) —
-  do not copy eEARN's fees/terms onto Tulipa; verify per-vault.
-- **pAlpha has no verified on-chain address** for this wallet — it is a `[static]`
-  benchmark only, never read on-chain. Add reads only if a real address is verified.
-- ✅ **MOSTLY RESOLVED — Phase-2 AA infra confirmed.** The docs predeploy table was
-  cross-checked on-chain: **EntryPoint v0.6 + v0.7, both SenderCreators,
-  SafeSingletonFactory, and CreateX are all deployed** (see `config.ts` `AA_PREDEPLOYS`,
-  checked by `npm run verify` and the test suite). A **Safe scoped-wallet path is
-  deployable today**; ERC-4337 session keys are viable too. The **only remaining gap
-  is a public bundler URL** — not in the docs corpus; Phase 2 must self-host or obtain
-  one. Smart-account factory is no longer a blocker (SafeSingletonFactory/CreateX).
-  Signing rails found in the docs: **Safe is officially supported** (UI
-  `app.safe.global` + Tx Service `transaction.safe.pharosnetwork.xyz`), **Fordefi**
-  (MPC), and a Pharos **agent toolkit** (Foundry `--private-key` + 4-check pre-check).
-  Recommended Phase-2 path: **Safe scoped-wallet** (no bundler needed). The Safe Tx
-  Service host did not resolve from this sandbox — confirm from a normal network.
-- ✅ **RESOLVED — automated test suite added.** `tests/live.test.ts` (run `npm test`)
-  is a LIVE integration suite (no mocks) asserting invariants that catch the classic
-  bugs: chain 1672, USDC decimals=6, ray-scaled APY < 100% (the "4,000,000%" guard),
-  oracle USDC near $1 (base-unit guard), Tulipa ERC-4626/asset, on-chain incentive
-  reads, all AA predeploys deployed, and the source-label honesty invariant. 9 tests,
-  all passing. It exercises the real modules — it does not introduce mocks.
+- Use `report` for the full picture, or a single command for one dimension.
+- **Always prefer `--json` when you are an agent consuming the output** — it emits
+  one structured object you can parse, instead of human text.
+- `--address 0x…` targets a specific wallet (defaults to the configured wallet).
+- `--allow-testnet` permits chain 688688; otherwise the tool refuses anything but
+  mainnet. Mainnet is the default and the network of every result.
 
-## Commit conventions
+Examples in natural language → command:
+- "Analyze wallet 0xABC on Pharos" → `npm run analyze -- report --address 0xABC --json`
+- "What's the real yield here?" → `npm run analyze -- trueyield --address 0xABC --json`
+- "Is anything depegged?" → `npm run analyze -- nav --json`
+- "What changed since last time?" → first `snapshot`, later `diff`.
 
-Use commit author **jennycruzy**; do **not** add AI attribution lines
-(no `Co-Authored-By`, no "Generated with Claude Code").
+## How to read the output
+
+Every value carries a **source label** — respect it:
+- `[on-chain]` — read live from a Pharos mainnet contract this run. Trust it.
+- `[api]` — from the Pharos Watch API this run. Trust it; note it's an external source.
+- `[static]` — known/off-chain, NOT live-verifiable. Treat as a hint, not a fact.
+
+A `null` value means the skill **could not source it and refused to guess** — do not
+fabricate a replacement. Each value also has a `confidence` (`high`/`medium`/`low`)
+and an optional `note` explaining caveats; surface low-confidence caveats to the user.
+
+`report --json` is the **bridge for downstream agents**: it returns `meta` (address,
+pinned block, `readOnly: true`), plus `eligibility`, `maturity`, `trueyield`, `risk`,
+`nav`, `diff`, a reproducible `snapshot`, and any `errors`.
+
+## Guarantees you can rely on
+
+- **Mainnet only (1672).** It refuses other networks unless `--allow-testnet`.
+- **No mocks.** Every value is a live on-chain read or the real Pharos Watch API.
+- **Honest by construction.** Unsourceable data is omitted and labeled, never faked.
+- **Read-only.** It cannot and will not sign or move funds.
+
+For deeper detail: `README.md` (setup, the Pharos Watch API, confirmed-vs-degraded
+table, real examples), `VERIFICATION.md` (live on-chain findings + Phase-2 signing
+readiness), and `NON_TECHNICAL_SUMMARY.md` (plain-English owner guide).

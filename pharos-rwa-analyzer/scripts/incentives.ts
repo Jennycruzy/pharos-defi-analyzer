@@ -14,6 +14,7 @@
 
 import { ethers } from 'ethers';
 import { ATOKEN_ABI, REWARDS_CONTROLLER_ABI } from './abi.js';
+import { withRetry, type ReadCtx } from './multicall.js';
 import { getProvider } from './rpc.js';
 
 const ZERO = '0x0000000000000000000000000000000000000000';
@@ -35,13 +36,21 @@ export interface IncentiveInfo {
 }
 
 /** Reads the incentive configuration for one aToken. Never throws — degrades to null controller. */
-export async function readIncentives(aTokenAddress: string, nowSeconds: number): Promise<IncentiveInfo> {
+export async function readIncentives(
+  aTokenAddress: string,
+  nowSeconds: number,
+  ctx?: ReadCtx,
+): Promise<IncentiveInfo> {
   const provider = getProvider();
   const aToken = new ethers.Contract(aTokenAddress, ATOKEN_ABI, provider);
+  const overrides = ctx ? { blockTag: ctx.blockTag } : {};
 
   let controller: string;
   try {
-    controller = (await aToken.getIncentivesController()) as string;
+    controller = (await withRetry(
+      () => aToken.getIncentivesController(overrides) as Promise<string>,
+      'aToken.getIncentivesController',
+    )) as string;
   } catch {
     return {
       controller: null,
@@ -62,7 +71,7 @@ export async function readIncentives(aTokenAddress: string, nowSeconds: number):
   const rc = new ethers.Contract(controller, REWARDS_CONTROLLER_ABI, provider);
   let rewardTokens: string[];
   try {
-    rewardTokens = (await rc.getRewardsByAsset(aTokenAddress)) as string[];
+    rewardTokens = (await rc.getRewardsByAsset(aTokenAddress, overrides)) as string[];
   } catch {
     return {
       controller,
@@ -75,7 +84,7 @@ export async function readIncentives(aTokenAddress: string, nowSeconds: number):
   const streams: RewardStream[] = [];
   for (const reward of rewardTokens) {
     try {
-      const data = await rc.getRewardsData(aTokenAddress, reward);
+      const data = await rc.getRewardsData(aTokenAddress, reward, overrides);
       const emission = data.emissionPerSecond as bigint;
       const end = Number(data.distributionEnd as bigint);
       streams.push({

@@ -9,6 +9,7 @@
 import { ethers } from 'ethers';
 import { ERC4626_ABI } from './abi.js';
 import { TULIPA } from './config.js';
+import { type ReadCtx } from './multicall.js';
 import { getProvider } from './rpc.js';
 
 export interface VaultInfo {
@@ -40,20 +41,21 @@ export class TulipaVault {
   }
 
   /** Confirms ERC-4626 by reading asset(); returns null if the vault isn't 4626. */
-  async getInfo(): Promise<VaultInfo | null> {
+  async getInfo(ctx?: ReadCtx): Promise<VaultInfo | null> {
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
     try {
       const [name, symbol, decimalsRaw, assetAddress] = await Promise.all([
-        this.c.name() as Promise<string>,
-        this.c.symbol() as Promise<string>,
-        this.c.decimals() as Promise<bigint>,
-        this.c.asset() as Promise<string>,
+        this.c.name(overrides) as Promise<string>,
+        this.c.symbol(overrides) as Promise<string>,
+        this.c.decimals(overrides) as Promise<bigint>,
+        this.c.asset(overrides) as Promise<string>,
       ]);
       const decimals = Number(decimalsRaw);
       const oneShare = 10n ** BigInt(decimals);
       const [assetsPerShare, totalAssetsRaw, totalSupplyRaw] = await Promise.all([
-        this.c.convertToAssets(oneShare) as Promise<bigint>,
-        this.c.totalAssets() as Promise<bigint>,
-        this.c.totalSupply() as Promise<bigint>,
+        this.c.convertToAssets(oneShare, overrides) as Promise<bigint>,
+        this.c.totalAssets(overrides) as Promise<bigint>,
+        this.c.totalSupply(overrides) as Promise<bigint>,
       ]);
       return {
         product: TULIPA.product,
@@ -74,11 +76,12 @@ export class TulipaVault {
   }
 
   /** The wallet's vault position and redemption capacity. */
-  async getPosition(user: string, info: VaultInfo): Promise<VaultPosition> {
+  async getPosition(user: string, info: VaultInfo, ctx?: ReadCtx): Promise<VaultPosition> {
+    const overrides = ctx ? { blockTag: ctx.blockTag } : {};
     const [sharesRaw, maxWithdrawRaw, maxRedeemRaw] = await Promise.all([
-      this.c.balanceOf(user) as Promise<bigint>,
-      this.c.maxWithdraw(user) as Promise<bigint>,
-      this.c.maxRedeem(user) as Promise<bigint>,
+      this.c.balanceOf(user, overrides) as Promise<bigint>,
+      this.c.maxWithdraw(user, overrides) as Promise<bigint>,
+      this.c.maxRedeem(user, overrides) as Promise<bigint>,
     ]);
     const shares = Number(ethers.formatUnits(sharesRaw, info.decimals));
     const redeemableAssets = Number(ethers.formatUnits(maxWithdrawRaw, info.decimals));
