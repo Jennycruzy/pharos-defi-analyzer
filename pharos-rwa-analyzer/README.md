@@ -11,10 +11,15 @@ Every number it prints comes from a **real live read** of Pharos mainnet or the
 real Pharos Watch API. There are **no mocks, no fakes, no example numbers.** Each
 value is tagged with its source: `[on-chain]`, `[api]`, or `[static]`.
 
+Use it three ways — a **CLI**, an **MCP server** for other agents, and an importable
+**TypeScript library** — and every report carries a **replayable proof** (pinned
+block + hash + the exact reads performed) so anyone can reproduce it.
+
 ---
 
 ## Contents
 
+- [Highlights](#highlights)
 - [What it analyzes](#what-it-analyzes-verified-on-mainnet-2026-06-16--see-verificationmd)
 - [The six layers](#the-six-layers-each-a-command)
 - [Data sources & integrations](#data-sources--integrations)
@@ -28,7 +33,32 @@ value is tagged with its source: `[on-chain]`, `[api]`, or `[static]`.
 - [Confirmed vs Degraded](#confirmed-vs-degraded-per-layer)
 - [Phase-2 signing readiness](#phase-2-signing-readiness-from-verificationmd--this-app-signs-nothing)
 - [Tests](#tests)
+- [Continuous integration](#continuous-integration)
 - [Architecture](#architecture)
+
+---
+
+## Highlights
+
+- **Six layers, one comparable answer each** — eligibility, maturity, trueyield,
+  risk, nav, diff. `report` runs all six; `report --json` is the agent bridge.
+- **Honest by construction** — every value is a `[on-chain]`/`[api]`/`[static]`
+  `Sourced<T>`; unsourceable data is `null` + explained, never fabricated.
+- **Liquidity-aware** — lending "redeemable now" is bounded by real pool liquidity,
+  not just your balance.
+- **Real risk math** — aggregate **and per-collateral** liquidation distance; the
+  USD total degrades to `[static]`/low-confidence if any price can't be sourced.
+- **Noise-resistant yield** — Tulipa RWA APY needs a ≥3-day snapshot gap and flags
+  implausible annualized figures instead of printing them as headline yield.
+- **Fast & consistent** — all reads batched through **Multicall3** at a single
+  **pinned block**, with retry/backoff; one report is internally consistent.
+- **Replayable proof** — `meta.proof` pins block + hash + the exact
+  `(contract, selector)` reads, so a third party can reproduce byte-identical values.
+- **Reusable by agents** — ships an **MCP server** (tools + a snapshot **resource** +
+  an `explain_wallet` **prompt**) and an importable **library API**.
+- **Guarded** — 23 tests (live + a **golden-snapshot** regression + pure-logic),
+  strict TypeScript, and CI on every push/PR.
+- **Read-only** — never signs, never holds a key, never moves funds. Signing is Phase 2.
 
 ---
 
@@ -404,6 +434,30 @@ it isn't. No mocked chain data anywhere.
 npm test              # all 23 checks (live + golden + pure-logic)
 npm run golden:gen    # regenerate the golden after an intentional shape change
 ```
+
+---
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs the strict typecheck and the full test suite
+(live + golden + pure-logic) on every push and PR to `main`. It needs network
+access to `rpc.pharos.xyz` (GitHub runners have it).
+
+**Optional secret — `PHAROS_WATCH_API_KEY`.** The Pharos Watch `[api]` nav test
+self-**skips** (it never fails and never fakes) unless a real key is present. To
+exercise that branch in CI, add the secret once:
+
+```bash
+gh secret set PHAROS_WATCH_API_KEY      # paste your key when prompted
+```
+
+Or via the UI: **repo → Settings → Secrets and variables → Actions → New repository
+secret**, name `PHAROS_WATCH_API_KEY`, value = your key from
+<https://pharos.watch/api/>. The workflow reads it into the job env
+(`PHAROS_WATCH_API_KEY: ${{ secrets.PHAROS_WATCH_API_KEY }}`) and prints only whether
+it is set — never the value. Without the secret, CI still passes (the `[api]` test
+just skips). The secret is never committed; locally it lives only in the gitignored
+`.env`.
 
 ---
 
