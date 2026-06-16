@@ -9,8 +9,14 @@
 import { ethers } from 'ethers';
 import { ORACLE_ABI } from './abi.js';
 import { USD_BASE } from './config.js';
-import { withRetry, type ReadCtx } from './multicall.js';
+import { logRead, withRetry, type ReadCtx } from './multicall.js';
 import { getProvider } from './rpc.js';
+
+const ORACLE_IFACE = new ethers.Interface(ORACLE_ABI);
+const SEL = {
+  getAssetPrice: ORACLE_IFACE.getFunction('getAssetPrice')!.selector,
+  baseCurrencyUnit: ORACLE_IFACE.getFunction('BASE_CURRENCY_UNIT')!.selector,
+} as const;
 
 export class PriceOracle {
   private readonly contract: ethers.Contract;
@@ -24,6 +30,7 @@ export class PriceOracle {
   private async getBaseUnit(ctx?: ReadCtx): Promise<bigint> {
     if (this.baseUnit !== null) return this.baseUnit;
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    logRead(ctx, this.oracleAddress, SEL.baseCurrencyUnit);
     try {
       const unit = (await this.contract.BASE_CURRENCY_UNIT(overrides)) as bigint;
       this.baseUnit = unit > 0n ? unit : USD_BASE;
@@ -37,6 +44,7 @@ export class PriceOracle {
   /** USD price of one whole token, as a JS number. Throws on revert (caller degrades). */
   async getUsdPrice(assetAddress: string, ctx?: ReadCtx): Promise<number> {
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    logRead(ctx, this.oracleAddress, SEL.getAssetPrice);
     const [raw, base] = await Promise.all([
       withRetry(() => this.contract.getAssetPrice(assetAddress, overrides) as Promise<bigint>, 'oracle.getAssetPrice'),
       this.getBaseUnit(ctx),

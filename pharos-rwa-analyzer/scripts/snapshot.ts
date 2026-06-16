@@ -56,6 +56,17 @@ export async function loadPrevious(address: string): Promise<Snapshot | null> {
   return history.length > 0 ? (history[history.length - 1] ?? null) : null;
 }
 
+/** Lowercased addresses that have at least one saved snapshot (for MCP resource listing). */
+export async function listSnapshotAddresses(): Promise<string[]> {
+  try {
+    const files = await fs.readdir(SNAP_DIR);
+    return files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, '').toLowerCase());
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+}
+
 /** Append a snapshot to the address's history file. Returns the saved snapshot. */
 export async function saveSnapshot(snap: Snapshot): Promise<Snapshot> {
   await fs.mkdir(SNAP_DIR, { recursive: true });

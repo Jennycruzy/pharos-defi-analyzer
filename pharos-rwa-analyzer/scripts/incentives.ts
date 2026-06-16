@@ -14,8 +14,16 @@
 
 import { ethers } from 'ethers';
 import { ATOKEN_ABI, REWARDS_CONTROLLER_ABI } from './abi.js';
-import { withRetry, type ReadCtx } from './multicall.js';
+import { logRead, withRetry, type ReadCtx } from './multicall.js';
 import { getProvider } from './rpc.js';
+
+const ATOKEN_IFACE = new ethers.Interface(ATOKEN_ABI);
+const RC_IFACE = new ethers.Interface(REWARDS_CONTROLLER_ABI);
+const SEL = {
+  getIncentivesController: ATOKEN_IFACE.getFunction('getIncentivesController')!.selector,
+  getRewardsByAsset: RC_IFACE.getFunction('getRewardsByAsset')!.selector,
+  getRewardsData: RC_IFACE.getFunction('getRewardsData')!.selector,
+} as const;
 
 const ZERO = '0x0000000000000000000000000000000000000000';
 
@@ -44,6 +52,7 @@ export async function readIncentives(
   const provider = getProvider();
   const aToken = new ethers.Contract(aTokenAddress, ATOKEN_ABI, provider);
   const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+  logRead(ctx, aTokenAddress, SEL.getIncentivesController);
 
   let controller: string;
   try {
@@ -69,6 +78,7 @@ export async function readIncentives(
   }
 
   const rc = new ethers.Contract(controller, REWARDS_CONTROLLER_ABI, provider);
+  logRead(ctx, controller, SEL.getRewardsByAsset);
   let rewardTokens: string[];
   try {
     rewardTokens = (await rc.getRewardsByAsset(aTokenAddress, overrides)) as string[];
@@ -84,6 +94,7 @@ export async function readIncentives(
   const streams: RewardStream[] = [];
   for (const reward of rewardTokens) {
     try {
+      logRead(ctx, controller, SEL.getRewardsData);
       const data = await rc.getRewardsData(aTokenAddress, reward, overrides);
       const emission = data.emissionPerSecond as bigint;
       const end = Number(data.distributionEnd as bigint);

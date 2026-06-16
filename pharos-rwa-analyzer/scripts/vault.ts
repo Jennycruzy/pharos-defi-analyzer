@@ -9,8 +9,13 @@
 import { ethers } from 'ethers';
 import { ERC4626_ABI } from './abi.js';
 import { TULIPA } from './config.js';
-import { type ReadCtx } from './multicall.js';
+import { logRead, type ReadCtx } from './multicall.js';
 import { getProvider } from './rpc.js';
+
+const VAULT_IFACE = new ethers.Interface(ERC4626_ABI);
+const sel = (name: string): string => VAULT_IFACE.getFunction(name)!.selector;
+const INFO_SELECTORS = ['name', 'symbol', 'decimals', 'asset', 'convertToAssets', 'totalAssets', 'totalSupply'].map(sel);
+const POSITION_SELECTORS = ['balanceOf', 'maxWithdraw', 'maxRedeem'].map(sel);
 
 export interface VaultInfo {
   product: string;
@@ -43,6 +48,7 @@ export class TulipaVault {
   /** Confirms ERC-4626 by reading asset(); returns null if the vault isn't 4626. */
   async getInfo(ctx?: ReadCtx): Promise<VaultInfo | null> {
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    for (const s of INFO_SELECTORS) logRead(ctx, this.address, s);
     try {
       const [name, symbol, decimalsRaw, assetAddress] = await Promise.all([
         this.c.name(overrides) as Promise<string>,
@@ -78,6 +84,7 @@ export class TulipaVault {
   /** The wallet's vault position and redemption capacity. */
   async getPosition(user: string, info: VaultInfo, ctx?: ReadCtx): Promise<VaultPosition> {
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    for (const s of POSITION_SELECTORS) logRead(ctx, this.address, s);
     const [sharesRaw, maxWithdrawRaw, maxRedeemRaw] = await Promise.all([
       this.c.balanceOf(user, overrides) as Promise<bigint>,
       this.c.maxWithdraw(user, overrides) as Promise<bigint>,

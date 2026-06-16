@@ -14,8 +14,8 @@ import {
   type UserReservePosition,
 } from './lending.js';
 import { readIncentives, type IncentiveInfo } from './incentives.js';
-import { type ReadCtx } from './multicall.js';
-import { assertPharosNetwork, type NetworkCheck } from './rpc.js';
+import { withRetry, type ReadCtx, type ReadRecord } from './multicall.js';
+import { assertPharosNetwork, getProvider, type NetworkCheck } from './rpc.js';
 import { TulipaVault, type VaultInfo, type VaultPosition } from './vault.js';
 import { PharosWatchClient, type WatchHealth } from './pharoswatch.js';
 import type { AnalyzerError } from './types.js';
@@ -47,6 +47,10 @@ export interface WalletScan {
   network: NetworkCheck;
   /** Block every read in this scan was pinned to (consistency + reproducibility). */
   block: number;
+  /** Hash of the pinned block — lets a third party replay the exact same reads. */
+  blockHash: string | null;
+  /** Every (contract, selector) read this scan performed, for the replayable proof. */
+  reads: ReadRecord[];
   lending: LendingScan[];
   vault: VaultScan | null;
   watch: { configured: boolean; health: WatchHealth };
@@ -102,11 +106,27 @@ async function scanLendingVenue(
   }
 }
 
-export async function collectWalletScan(address: string, allowTestnet = false): Promise<WalletScan> {
+export async function collectWalletScan(
+  address: string,
+  allowTestnet = false,
+  pinBlock?: number,
+): Promise<WalletScan> {
   const errors: AnalyzerError[] = [];
   const network = await assertPharosNetwork(allowTestnet);
   // Pin the block once: every read below is consistent and the snapshot is reproducible.
-  const ctx: ReadCtx = { blockTag: network.blockNumber };
+  // `pinBlock` lets a caller replay a past report deterministically (archive RPC).
+  const blockTag = pinBlock ?? network.blockNumber;
+  const reads: ReadRecord[] = [];
+  const ctx: ReadCtx = { blockTag, reads };
+
+  // Capture the pinned block's hash so the report carries a verifiable anchor.
+  let blockHash: string | null = null;
+  try {
+    const blk = await withRetry(() => getProvider().getBlock(blockTag), 'getBlock');
+    blockHash = blk?.hash ?? null;
+  } catch (err) {
+    errors.push({ scope: 'blockHash', message: err instanceof Error ? err.message : String(err) });
+  }
 
   const adapters = getLendingAdapters();
   const lendingResults = await Promise.all(adapters.map((a) => scanLendingVenue(a, address, errors, ctx)));
@@ -143,7 +163,9 @@ export async function collectWalletScan(address: string, allowTestnet = false): 
   return {
     address,
     network,
-    block: ctx.blockTag,
+    block: blockTag,
+    blockHash,
+    reads,
     lending,
     vault,
     watch: { configured: watchClient.isConfigured(), health },

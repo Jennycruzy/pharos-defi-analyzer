@@ -11,12 +11,13 @@
  * Run:  npm run mcp     (or:  npx tsx scripts/mcp.ts)
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { ethers } from 'ethers';
 import { DEFAULT_ADDRESS } from './config.js';
 import { getLayer, getReport, getVerify, saveWalletSnapshot, toJson, type LayerName } from './api.js';
+import { listSnapshotAddresses, loadHistory } from './snapshot.js';
 
 const LAYERS = ['eligibility', 'maturity', 'trueyield', 'risk', 'nav', 'diff'] as const;
 
@@ -107,6 +108,75 @@ server.registerTool(
     inputSchema: addressShape,
   },
   async ({ address, allowTestnet }) => safe(() => saveWalletSnapshot(resolveAddress(address), allowTestnet ?? false)),
+);
+
+// --- Resources: saved snapshots, readable without a fresh scan ----------------
+
+server.registerResource(
+  'pharos-snapshots',
+  new ResourceTemplate('pharos://snapshot/{address}', {
+    // Enumerate wallets that have a saved snapshot, so a client can browse them.
+    list: async () => {
+      const addresses = await listSnapshotAddresses();
+      return {
+        resources: addresses.map((a) => ({
+          uri: `pharos://snapshot/${a}`,
+          name: `Snapshot history — ${a}`,
+          mimeType: 'application/json',
+        })),
+      };
+    },
+  }),
+  {
+    title: 'Pharos position snapshots',
+    description:
+      'Full saved snapshot history for a wallet (oldest→newest), as JSON. Read this to see prior state ' +
+      'without running a new scan — useful for explaining what changed over time.',
+    mimeType: 'application/json',
+  },
+  async (uri, variables) => {
+    const raw = Array.isArray(variables['address']) ? variables['address'][0] : variables['address'];
+    const address = ethers.isAddress(raw ?? '') ? ethers.getAddress(raw as string) : null;
+    if (!address) throw new Error(`Invalid address in resource URI: ${String(raw)}`);
+    const history = await loadHistory(address);
+    return { contents: [{ uri: uri.href, mimeType: 'application/json', text: toJson(history) }] };
+  },
+);
+
+// --- Prompt: a reusable "explain this wallet" template ------------------------
+
+server.registerPrompt(
+  'explain_wallet',
+  {
+    title: 'Explain a Pharos wallet in plain English',
+    description:
+      'Produces an instruction to run pharos_report for a wallet and explain it to a non-technical owner — ' +
+      'respecting source labels, flagging risks, and never inventing numbers.',
+    argsSchema: {
+      address: z.string().optional().describe('Wallet to explain (0x…). Defaults to the configured wallet.'),
+    },
+  },
+  ({ address }) => {
+    const who = address?.trim() || DEFAULT_ADDRESS;
+    return {
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text:
+              `Call the \`pharos_report\` tool for wallet ${who} on Pharos mainnet, then explain the result to a ` +
+              `non-technical owner. Cover, in plain language: what they can act on (eligibility), when they can ` +
+              `exit (maturity), their real yield after stripping unverified incentives (trueyield), their biggest ` +
+              `risk (risk), and any depeg (nav).\n\n` +
+              `Rules: trust each value according to its source label — [on-chain] and [api] are live, [static] is ` +
+              `an off-chain hint. If a value is null, say it could not be verified; do NOT invent a number. ` +
+              `Call out anything low-confidence or flagged.`,
+          },
+        },
+      ],
+    };
+  },
 );
 
 async function main(): Promise<void> {

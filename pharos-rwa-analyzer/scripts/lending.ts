@@ -15,7 +15,7 @@
 import { ethers } from 'ethers';
 import { ADDRESSES_PROVIDER_ABI, DATA_PROVIDER_ABI, ERC20_ABI, POOL_ABI } from './abi.js';
 import { LENDING_VENUES, RAY, THRESHOLDS } from './config.js';
-import { aggregate3, withRetry, type Call3, type ReadCtx } from './multicall.js';
+import { aggregate3, logRead, withRetry, type Call3, type ReadCtx } from './multicall.js';
 import { PriceOracle } from './prices.js';
 import { getProvider } from './rpc.js';
 
@@ -64,6 +64,15 @@ const MAX_UINT = (1n << 256n) - 1n;
 const POOL_IFACE = new ethers.Interface(POOL_ABI);
 const DATA_PROVIDER_IFACE = new ethers.Interface(DATA_PROVIDER_ABI);
 const ERC20_IFACE = new ethers.Interface(ERC20_ABI);
+const AP_IFACE = new ethers.Interface(ADDRESSES_PROVIDER_ABI);
+
+/** Function selectors, computed once, for the replayable read-proof. */
+const SEL = {
+  getPriceOracle: AP_IFACE.getFunction('getPriceOracle')!.selector,
+  getPoolDataProvider: AP_IFACE.getFunction('getPoolDataProvider')!.selector,
+  getAllReservesTokens: DATA_PROVIDER_IFACE.getFunction('getAllReservesTokens')!.selector,
+  getUserAccountData: POOL_IFACE.getFunction('getUserAccountData')!.selector,
+} as const;
 
 /** APR (ray) -> compounded APY %, matching Aave's per-second compounding model. */
 function rayAprToApyPct(rateRay: bigint): number {
@@ -105,6 +114,8 @@ export class LendingVenueAdapter {
   async refreshResolvedAddresses(ctx?: ReadCtx): Promise<{ oracle: string; dataProvider: string }> {
     const ap = new ethers.Contract(this.cfg.addressesProvider, ADDRESSES_PROVIDER_ABI, getProvider());
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    logRead(ctx, this.cfg.addressesProvider, SEL.getPriceOracle);
+    logRead(ctx, this.cfg.addressesProvider, SEL.getPoolDataProvider);
     const [liveOracle, liveDp] = await Promise.all([
       withRetry(() => ap.getPriceOracle(overrides) as Promise<string>, `${this.product}.getPriceOracle`),
       withRetry(() => ap.getPoolDataProvider(overrides) as Promise<string>, `${this.product}.getPoolDataProvider`),
@@ -122,6 +133,7 @@ export class LendingVenueAdapter {
   async getReserves(ctx?: ReadCtx): Promise<ReserveInfo[]> {
     const dp = new ethers.Contract(this.dataProviderAddress, DATA_PROVIDER_ABI, getProvider());
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    logRead(ctx, this.dataProviderAddress, SEL.getAllReservesTokens);
     const tokens = (await withRetry(
       () => dp.getAllReservesTokens(overrides),
       `${this.product}.getAllReservesTokens`,
@@ -218,6 +230,7 @@ export class LendingVenueAdapter {
   /** Aggregate account health (8-decimal USD base; HF in 1e18). */
   async getUserAccount(user: string, ctx?: ReadCtx): Promise<UserAccount> {
     const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+    logRead(ctx, this.cfg.pool, SEL.getUserAccountData);
     const a = await withRetry(
       () => this.pool.getUserAccountData(user, overrides),
       `${this.product}.getUserAccountData`,

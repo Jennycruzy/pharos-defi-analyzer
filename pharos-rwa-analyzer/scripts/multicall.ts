@@ -33,18 +33,34 @@ export interface Call3Result {
   returnData: string;
 }
 
+/** One on-chain read recorded for the replayable proof: contract + 4-byte selector. */
+export interface ReadRecord {
+  target: string; // lowercased contract address
+  selector: string; // 0x + 8 hex chars (the function selector)
+}
+
 /**
  * Read context shared across one scan. Pinning a block makes every read in a
- * report consistent (no drift between the first and last RPC call).
+ * report consistent (no drift between the first and last RPC call). When `reads`
+ * is supplied, batched and singleton reads append a (target, selector) record so
+ * the report can carry a replayable proof of exactly what it read.
  */
 export interface ReadCtx {
   blockTag: number;
+  reads?: ReadRecord[];
+}
+
+/** Record a single (target, selector) read on the proof log, if one is attached. */
+export function logRead(ctx: ReadCtx | undefined, target: string, selector: string): void {
+  if (ctx?.reads) ctx.reads.push({ target: target.toLowerCase(), selector });
 }
 
 /** Execute a Multicall3 batch as a static (read-only) call at an optional block. */
 export async function aggregate3(calls: Call3[], ctx?: ReadCtx): Promise<Call3Result[]> {
   const mc = new ethers.Contract(MULTICALL3_ADDRESS, MULTICALL3_ABI, getProvider());
   const overrides = ctx ? { blockTag: ctx.blockTag } : {};
+  // Record each batched read (target + 4-byte selector) for the proof.
+  for (const c of calls) logRead(ctx, c.target, c.callData.slice(0, 10));
   const raw = (await withRetry(
     () => mc.aggregate3.staticCall(calls, overrides),
     'multicall.aggregate3',

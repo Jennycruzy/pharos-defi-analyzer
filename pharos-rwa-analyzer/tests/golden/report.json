@@ -1,0 +1,590 @@
+{
+  "meta": {
+    "generatedAt": 0,
+    "address": "0x0Ac6bf160e208e67AF06d7F00c92AEfBbf089f95",
+    "network": {
+      "chainId": "1672",
+      "block": 10000000
+    },
+    "readOnly": true,
+    "proof": {
+      "chainId": "1672",
+      "blockNumber": 10000000,
+      "blockHash": "0x2d952c1c5b47b1f5dd39b620458f9a142b809e9019e4d421171d2d68d634f2d5",
+      "rpcUrl": "https://rpc.pharos.xyz",
+      "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+      "contracts": {
+        "venues": [
+          {
+            "product": "OpenFi",
+            "oracle": "0x878aF9E17C0168bBCdB4f33890Bf8CDE7592a6d1",
+            "dataProvider": "0x3EF4724f0f2fabfA0ba96AfC711D64e6BE3367Fb"
+          },
+          {
+            "product": "ZonaLend",
+            "oracle": "0x6bEDfCa244f29dD916fe7c50e1469C6188B873f9",
+            "dataProvider": "0xA91424C666193C2b2fb684E25dEadf03B333f49A"
+          }
+        ],
+        "vault": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5"
+      },
+      "reads": [
+        {
+          "target": "0x1f4b7011ee3d53969bb67f59428a9ec0477856e9",
+          "selector": "0x70a08231",
+          "count": 2
+        },
+        {
+          "target": "0x3078361290234f1269034e6f9af90a7512159fb1",
+          "selector": "0xe860accb",
+          "count": 1
+        },
+        {
+          "target": "0x3078361290234f1269034e6f9af90a7512159fb1",
+          "selector": "0xfca513a8",
+          "count": 1
+        },
+        {
+          "target": "0x30b2e1411fd2ed9f1f46f59497e2186ce5be3b26",
+          "selector": "0x35ea6a75",
+          "count": 3
+        },
+        {
+          "target": "0x30b2e1411fd2ed9f1f46f59497e2186ce5be3b26",
+          "selector": "0xbf92857c",
+          "count": 1
+        },
+        {
+          "target": "0x3ef4724f0f2fabfa0ba96afc711d64e6be3367fb",
+          "selector": "0x28dd2d01",
+          "count": 3
+        },
+        {
+          "target": "0x3ef4724f0f2fabfa0ba96afc711d64e6be3367fb",
+          "selector": "0x3e150141",
+          "count": 3
+        },
+        {
+          "target": "0x3ef4724f0f2fabfa0ba96afc711d64e6be3367fb",
+          "selector": "0xb316ff89",
+          "count": 1
+        },
+        {
+          "target": "0x4d1c33b59b8d4b98dbb61faaf49cdd0e597e19e9",
+          "selector": "0x75d26413",
+          "count": 1
+        },
+        {
+          "target": "0x52c48d4213107b20bc583832b0d951fb9ca8f0b0",
+          "selector": "0x70a08231",
+          "count": 2
+        },
+        {
+          "target": "0x6bedfca244f29dd916fe7c50e1469c6188b873f9",
+          "selector": "0x8c89b64f",
+          "count": 1
+        },
+        {
+          "target": "0x6bedfca244f29dd916fe7c50e1469c6188b873f9",
+          "selector": "0xb3596f07",
+          "count": 3
+        },
+        {
+          "target": "0x74c03457f461def9837884de93223545b172f67d",
+          "selector": "0x6657732f",
+          "count": 3
+        },
+        {
+          "target": "0x7c48ae7207130715dfcca41a990a8143abb152fc",
+          "selector": "0x75d26413",
+          "count": 1
+        },
+        {
+          "target": "0x7e23c96d7fbcd538272390ec5f8766032d4d96fd",
+          "selector": "0x75d26413",
+          "count": 1
+        },
+        {
+          "target": "0x843913de261a1712d3ae8d4bc751e705bb0823b8",
+          "selector": "0x75d26413",
+          "count": 1
+        },
+        {
+          "target": "0x878af9e17c0168bbcdb4f33890bf8cde7592a6d1",
+          "selector": "0x8c89b64f",
+          "count": 1
+        },
+        {
+          "target": "0x878af9e17c0168bbcdb4f33890bf8cde7592a6d1",
+          "selector": "0xb3596f07",
+          "count": 3
+        },
+        {
+          "target": "0x923f847549713650b7f66b0052b70d5d3216e41a",
+          "selector": "0xe860accb",
+          "count": 1
+        },
+        {
+          "target": "0x923f847549713650b7f66b0052b70d5d3216e41a",
+          "selector": "0xfca513a8",
+          "count": 1
+        },
+        {
+          "target": "0x9dcf4b664fd2c8f0f5147ea469afe1cbc9e69d96",
+          "selector": "0x75d26413",
+          "count": 1
+        },
+        {
+          "target": "0xa91424c666193c2b2fb684e25deadf03b333f49a",
+          "selector": "0x28dd2d01",
+          "count": 3
+        },
+        {
+          "target": "0xa91424c666193c2b2fb684e25deadf03b333f49a",
+          "selector": "0x3e150141",
+          "count": 3
+        },
+        {
+          "target": "0xa91424c666193c2b2fb684e25deadf03b333f49a",
+          "selector": "0xb316ff89",
+          "count": 1
+        },
+        {
+          "target": "0xa9f4fef0862eff443f3776ef359a2ff24896a80c",
+          "selector": "0x6657732f",
+          "count": 3
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x01e1d114",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x06fdde03",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x07a2d13a",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x18160ddd",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x313ce567",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x38d52e0f",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x70a08231",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0x95d89b41",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0xce96cb77",
+          "count": 1
+        },
+        {
+          "target": "0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5",
+          "selector": "0xd905777e",
+          "count": 1
+        },
+        {
+          "target": "0xc03ff2f52855e2c24a9a144e4640747635c4a6f2",
+          "selector": "0x75d26413",
+          "count": 1
+        },
+        {
+          "target": "0xc879c018db60520f4355c26ed1a6d572cdac1815",
+          "selector": "0x70a08231",
+          "count": 2
+        },
+        {
+          "target": "0xda464e68208a3083eb65fe5c522a72aed1c1372a",
+          "selector": "0x35ea6a75",
+          "count": 3
+        },
+        {
+          "target": "0xda464e68208a3083eb65fe5c522a72aed1c1372a",
+          "selector": "0xbf92857c",
+          "count": 1
+        }
+      ],
+      "replay": "Re-run getReport pinned to blockNumber against an archive RPC; on-chain values are deterministic at this block/hash. [api] (Pharos Watch) values are live and not block-bound."
+    }
+  },
+  "snapshot": {
+    "version": 1,
+    "address": "0x0Ac6bf160e208e67AF06d7F00c92AEfBbf089f95",
+    "takenAt": 0,
+    "chainId": "1672",
+    "totalUsd": 0.109975,
+    "positions": [
+      {
+        "product": "Tulipa",
+        "asset": "tulPRWA",
+        "suppliedAmount": 0.11,
+        "borrowedAmount": 0,
+        "suppliedUsd": 0.109975,
+        "baseApyPct": null,
+        "sharePrice": 1,
+        "redeemableAssets": 0.11,
+        "isFrozen": null
+      }
+    ]
+  },
+  "eligibility": {
+    "layer": "eligibility",
+    "entries": [
+      {
+        "product": "OpenFi",
+        "access": "permissionless",
+        "actionable": true,
+        "reason": {
+          "value": "Permissionless: 3/3 reserves active & not frozen (USDC, WETH, WPROS).",
+          "source": "on-chain",
+          "confidence": "high"
+        }
+      },
+      {
+        "product": "ZonaLend",
+        "access": "permissionless",
+        "actionable": true,
+        "reason": {
+          "value": "Permissionless: 2/3 reserves active & not frozen (USDC, WPROS). Frozen: WETH.",
+          "source": "on-chain",
+          "confidence": "high"
+        }
+      },
+      {
+        "product": "Tulipa",
+        "access": "gated-but-owned",
+        "actionable": true,
+        "reason": {
+          "value": "Holds 0.11 tulPRWA shares — position is open to this wallet. New deposits are signature-gated (deposit selector 0x50921b23 requires an allowlisted signer).",
+          "source": "on-chain",
+          "confidence": "high"
+        }
+      },
+      {
+        "product": "pAlpha",
+        "access": "gated",
+        "actionable": false,
+        "reason": {
+          "value": "Gated institutional vault. No verified on-chain address or APY for this wallet; listed as a benchmark only.",
+          "source": "static",
+          "confidence": "medium"
+        }
+      }
+    ]
+  },
+  "maturity": {
+    "layer": "maturity",
+    "entries": [
+      {
+        "product": "Tulipa",
+        "asset": "tulPRWA",
+        "status": {
+          "value": "Fully redeemable now: maxRedeem covers your full 0.11 tulPRWA balance.",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "redeemableNow": {
+          "value": 0.11,
+          "source": "on-chain",
+          "confidence": "high"
+        }
+      }
+    ]
+  },
+  "trueyield": {
+    "layer": "trueyield",
+    "entries": [
+      {
+        "product": "OpenFi",
+        "asset": "USDC",
+        "baseApyPct": {
+          "value": 1.667016,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "rwaIncomeApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Lending market: no separate RWA-income component."
+        },
+        "incentiveApyNote": {
+          "value": "Incentives controller 0x74C03457F461DeF9837884de93223545b172F67d is deployed but lists 0 active reward streams for this aToken — any advertised \"bonus\" APY is NOT an on-chain emission we can verify.",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "netApyEstimatePct": {
+          "value": 1.667016,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Verified base supply APY only."
+        }
+      },
+      {
+        "product": "OpenFi",
+        "asset": "WETH",
+        "baseApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "rwaIncomeApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Lending market: no separate RWA-income component."
+        },
+        "incentiveApyNote": {
+          "value": "Incentives controller 0x74C03457F461DeF9837884de93223545b172F67d is deployed but lists 0 active reward streams for this aToken — any advertised \"bonus\" APY is NOT an on-chain emission we can verify.",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "netApyEstimatePct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Verified base supply APY only."
+        }
+      },
+      {
+        "product": "OpenFi",
+        "asset": "WPROS",
+        "baseApyPct": {
+          "value": 0.008892,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "rwaIncomeApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Lending market: no separate RWA-income component."
+        },
+        "incentiveApyNote": {
+          "value": "Incentives controller 0x74C03457F461DeF9837884de93223545b172F67d is deployed but lists 0 active reward streams for this aToken — any advertised \"bonus\" APY is NOT an on-chain emission we can verify.",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "netApyEstimatePct": {
+          "value": 0.008892,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Verified base supply APY only."
+        }
+      },
+      {
+        "product": "ZonaLend",
+        "asset": "USDC",
+        "baseApyPct": {
+          "value": 0.000008,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "rwaIncomeApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Lending market: no separate RWA-income component."
+        },
+        "incentiveApyNote": {
+          "value": "Incentives controller 0xA9F4FEF0862efF443f3776eF359A2ff24896A80C is deployed but lists 0 active reward streams for this aToken — any advertised \"bonus\" APY is NOT an on-chain emission we can verify. (Zona advertises ~210% total — see this verified on-chain check.)",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "netApyEstimatePct": {
+          "value": 0.000008,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Verified base supply APY only."
+        }
+      },
+      {
+        "product": "ZonaLend",
+        "asset": "WETH",
+        "baseApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "rwaIncomeApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Lending market: no separate RWA-income component."
+        },
+        "incentiveApyNote": {
+          "value": "Incentives controller 0xA9F4FEF0862efF443f3776eF359A2ff24896A80C is deployed but lists 0 active reward streams for this aToken — any advertised \"bonus\" APY is NOT an on-chain emission we can verify. (Zona advertises ~210% total — see this verified on-chain check.)",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "netApyEstimatePct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Verified base supply APY only."
+        }
+      },
+      {
+        "product": "ZonaLend",
+        "asset": "WPROS",
+        "baseApyPct": {
+          "value": 0.033857,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "rwaIncomeApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Lending market: no separate RWA-income component."
+        },
+        "incentiveApyNote": {
+          "value": "Incentives controller 0xA9F4FEF0862efF443f3776eF359A2ff24896A80C is deployed but lists 0 active reward streams for this aToken — any advertised \"bonus\" APY is NOT an on-chain emission we can verify. (Zona advertises ~210% total — see this verified on-chain check.)",
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "netApyEstimatePct": {
+          "value": 0.033857,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Verified base supply APY only."
+        }
+      },
+      {
+        "product": "Tulipa",
+        "asset": "tulPRWA",
+        "baseApyPct": {
+          "value": 0,
+          "source": "on-chain",
+          "confidence": "high",
+          "note": "Vault yield is realized as share-price growth, shown as RWA income."
+        },
+        "rwaIncomeApyPct": {
+          "value": null,
+          "source": "on-chain",
+          "confidence": "low",
+          "note": "Needs >=2 snapshots to measure RWA income. Ember updates share price ~twice weekly (Tue/Fri) — take a snapshot now and another >=4 days later for a meaningful reading."
+        },
+        "incentiveApyNote": {
+          "value": "RWA income is realized in NAV/share-price growth; no token incentive component. Ember updates this vault's share price ~twice weekly (Tue/Fri), so space snapshots >=4 days apart to capture a real change (otherwise RWA-income reads 0).",
+          "source": "static",
+          "confidence": "low"
+        },
+        "netApyEstimatePct": {
+          "value": null,
+          "source": "on-chain",
+          "confidence": "low",
+          "note": "Needs >=2 snapshots to measure RWA income. Ember updates share price ~twice weekly (Tue/Fri) — take a snapshot now and another >=4 days later for a meaningful reading."
+        }
+      }
+    ]
+  },
+  "risk": {
+    "layer": "risk",
+    "totalUsd": {
+      "value": 0.109975,
+      "source": "on-chain",
+      "confidence": "high"
+    },
+    "perPosition": [
+      {
+        "product": "Tulipa",
+        "asset": "tulPRWA",
+        "suppliedUsd": 0.109975,
+        "borrowedUsd": 0,
+        "netUsd": 0.109975
+      }
+    ],
+    "mostFragile": {
+      "value": {
+        "product": "(none)",
+        "healthFactor": null,
+        "priceDropToLiquidationPct": null,
+        "perCollateral": [],
+        "note": "No borrowed positions detected — no liquidation risk for this wallet."
+      },
+      "source": "on-chain",
+      "confidence": "high"
+    },
+    "concentrationWarnings": [
+      "100% of wallet value ($0.109975) is concentrated in Tulipa (> 60% threshold)."
+    ]
+  },
+  "nav": {
+    "layer": "nav",
+    "apiAvailable": false,
+    "apiNote": "<normalized: live api excluded>",
+    "flags": [
+      {
+        "subject": "Tulipa (tulPRWA)",
+        "metric": "ERC-4626 share price vs 1.0",
+        "value": {
+          "value": 1,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "expected": 1,
+        "driftPct": 0,
+        "depegged": false
+      },
+      {
+        "subject": "USDC @ OpenFi",
+        "metric": "oracle USD price vs $1.00",
+        "value": {
+          "value": 0.999774,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "expected": 1,
+        "driftPct": -0.02258,
+        "depegged": false
+      },
+      {
+        "subject": "USDC @ ZonaLend",
+        "metric": "oracle USD price vs $1.00",
+        "value": {
+          "value": 0.999774,
+          "source": "on-chain",
+          "confidence": "high"
+        },
+        "expected": 1,
+        "driftPct": -0.02258,
+        "depegged": false
+      }
+    ]
+  },
+  "diff": {
+    "layer": "diff",
+    "hasPrevious": false,
+    "previousAt": null,
+    "ageSeconds": null,
+    "changes": [],
+    "summary": {
+      "value": "No prior snapshot for this wallet. Run `snapshot` now, come back later, and `diff` will show what changed.",
+      "source": "static",
+      "confidence": "high"
+    }
+  },
+  "errors": []
+}

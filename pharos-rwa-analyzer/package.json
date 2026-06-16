@@ -14,6 +14,7 @@
     "report": "tsx scripts/cli.ts report",
     "mcp": "tsx scripts/mcp.ts",
     "test": "tsx --test tests/*.test.ts",
+    "golden:gen": "tsx tests/golden/generate.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [

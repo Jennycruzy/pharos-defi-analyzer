@@ -164,6 +164,16 @@ agent should read (what to say, how to interpret the source labels and `null`s).
 - "Is Pharos infra healthy?" → `pharos_verify {}`
 - "Save the current state so we can compare later" → `pharos_snapshot {}`
 
+**Resources & prompts (not just tools):**
+
+- **Resource** `pharos://snapshot/{address}` — the full saved snapshot history for a
+  wallet, as JSON. An agent can *read prior state* (to explain what changed) without
+  triggering a new scan. The server enumerates wallets that have snapshots so clients
+  can browse them.
+- **Prompt** `explain_wallet` (arg: `address?`) — a reusable template that tells the
+  agent to run `pharos_report` and explain the result to a non-technical owner while
+  respecting source labels and never inventing numbers.
+
 ---
 
 ## Use it as a library (programmatic API)
@@ -287,7 +297,16 @@ downstream (Phase-2) agent consumes. Top-level shape:
     "generatedAt": 1718539200,           // unix seconds
     "address": "0x0Ac6…9f95",
     "network": { "chainId": "1672", "block": 10228494 },  // the pinned block
-    "readOnly": true                      // this skill never signs
+    "readOnly": true,                     // this skill never signs
+    "proof": {                            // replayable anchor (see below)
+      "blockNumber": 10228494,
+      "blockHash": "0x…",                 // pin to an exact, immutable block
+      "chainId": "1672",
+      "multicall3": "0xcA11…CA11",
+      "contracts": { "venues": [ … ], "vault": "0xbae9…aec5" },
+      "reads": [ { "target": "0x…", "selector": "0x70a08231", "count": 2 }, … ],
+      "replay": "Re-run getReport pinned to blockNumber against an archive RPC; …"
+    }
   },
   "snapshot":   { /* reproducible position snapshot at the pinned block */ },
   "eligibility":{ "layer": "eligibility", "entries": [ … ] },
@@ -311,6 +330,21 @@ Every leaf value that the skill reports is a `Sourced<T>`:
 (`on-chain`/`api` = live, `static` = off-chain hint) and `confidence`; a `null`
 `value` means it could not be sourced — **do not fabricate a replacement.** Single
 commands (e.g. `trueyield --json`) emit `{ address, <layer> }` with the same shapes.
+
+### Reproducible proof (`meta.proof`)
+
+Every report is **replayable**. All reads run at one pinned block, and `meta.proof`
+records that block's number **and hash**, the chain id, the resolved contracts, and
+the exact `(target, selector)` reads performed. Anyone can re-run the report against
+an archive RPC pinned to that block and get **byte-identical** on-chain values:
+
+```ts
+import { getReport } from './scripts/api.js';
+const replay = await getReport(address, false, /* pinBlock */ 10228494);
+```
+
+Turns "trust me" into "verify me." (Pharos Watch `[api]` values are live and not
+block-bound, so they're excluded from the deterministic guarantee.)
 
 ---
 
@@ -353,15 +387,23 @@ All account-abstraction predeploys below are **confirmed deployed on mainnet**
 npm test   # live integration tests against mainnet (no mocks)
 ```
 
-21 checks total. The **live** checks assert real on-chain invariants that catch
+23 checks total. The **live** checks assert real on-chain invariants that catch
 the classic failure modes (wrong network, wrong decimals, unscaled ray APY, wrong
 oracle base unit, broken source-labeling, withdrawable-exceeds-liquidity), plus the
-shared `api.getReport`/`getLayer` shape the MCP server serves. The **pure-logic**
-checks (`tests/unit.test.ts`) verify the diff engine and the per-collateral
-liquidation math with hand-built inputs — needed because the demo wallet carries no
-debt, so the liquidation path can't be triggered live. A key-gated test exercises
-the Pharos Watch `[api]` branch when `PHAROS_WATCH_API_KEY` is set, and self-skips
-(never fakes) when it isn't. No mocked chain data anywhere.
+shared `api.getReport`/`getLayer` shape the MCP server serves. A **golden-snapshot**
+test (`tests/golden.test.ts`) pins a fixed historical block and asserts the report
+still matches a committed JSON (modulo wall-clock + live `[api]`) — catching silent
+numeric drift that ordinary live tests miss. The **pure-logic** checks
+(`tests/unit.test.ts`) verify the diff engine and the per-collateral liquidation math
+with hand-built inputs — needed because the demo wallet carries no debt, so the
+liquidation path can't be triggered live. A key-gated test exercises the Pharos Watch
+`[api]` branch when `PHAROS_WATCH_API_KEY` is set, and self-skips (never fakes) when
+it isn't. No mocked chain data anywhere.
+
+```bash
+npm test              # all 23 checks (live + golden + pure-logic)
+npm run golden:gen    # regenerate the golden after an intentional shape change
+```
 
 ---
 
