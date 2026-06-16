@@ -18,6 +18,7 @@ type VenueConfig = (typeof LENDING_VENUES)[number];
 export interface ReserveInfo {
   symbol: string;
   address: string;
+  aTokenAddress: string;
   decimals: number;
   supplyAprPct: number; // linear annual rate from currentLiquidityRate
   supplyApyPct: number; // compounded equivalent
@@ -115,6 +116,7 @@ export class LendingVenueAdapter {
       reserves.push({
         symbol: t.symbol,
         address: t.tokenAddress,
+        aTokenAddress: rd.aTokenAddress as string,
         decimals: Number(cfg.decimals),
         supplyAprPct: rayToAprPct(rd.currentLiquidityRate as bigint),
         supplyApyPct: rayAprToApyPct(rd.currentLiquidityRate as bigint),

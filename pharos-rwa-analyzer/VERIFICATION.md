@@ -75,6 +75,19 @@ AddressesProvider at runtime.
   the market address is a **Pool**, not a token. Reads go through the pool/data
   provider, exactly as built.
 
+### On-chain incentive check (the "210%" question) — ✅ verified
+The USDC aTokens expose `getIncentivesController()`:
+- OpenFi aToken `0x9dcf…9D96` → controller **`0x74C03457F461DeF9837884de93223545b172F67d`**
+- ZonaLend aToken `0x8439…23B8` → controller **`0xA9F4FEF0862efF443f3776eF359A2ff24896A80C`**
+
+Both controllers are **deployed** (bytecode present) but
+`getRewardsList()` and `getRewardsByAsset(aToken)` return **empty arrays** — i.e.
+**no active on-chain reward emissions** for the USDC supply aToken. Conclusion:
+the advertised ~210% does **not** originate from an on-chain RewardsController
+emission we can verify. `trueyield` now reports this as a `[on-chain]` fact via
+`scripts/incentives.ts`, and never folds unverifiable incentives into the
+comparable number.
+
 ---
 
 ## D. Tulipa Multi-RWA Vault — ✅ ERC-4626 CONFIRMED

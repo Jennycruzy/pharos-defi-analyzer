@@ -39,17 +39,21 @@ export function analyzeTrueYield(scan: WalletScan, previous: Snapshot | null): T
     for (const r of l.reserves) {
       const held = l.positions.some((p) => p.symbol === r.symbol && p.suppliedAmount > 0);
       const base = r.supplyApyPct;
-      // Zona advertises a high incentive total; only label, never fold into the number.
-      const incentiveNote =
-        l.product === 'ZonaLend'
-          ? 'Advertised total (incl. incentive emissions, ~210% claimed) is NOT on-chain verified; not counted here.'
-          : 'No on-chain incentive source verified for this market; not counted.';
+      // We now READ the on-chain RewardsController, so the incentive note is a
+      // verified [on-chain] fact rather than a guess. Emissions are still never
+      // folded into the comparable number unless they are active and priceable.
+      const inc = l.incentives[r.address.toLowerCase()];
+      const advertised =
+        l.product === 'ZonaLend' ? ' (Zona advertises ~210% total — see this verified on-chain check.)' : '';
+      const incentiveNote = inc
+        ? inc.note + advertised
+        : 'Incentive controller not read for this reserve.' + advertised;
       entries.push({
         product: l.product,
         asset: r.symbol + (held ? ' (held)' : ''),
         baseApyPct: sourced(round(base), 'on-chain', 'high'),
         rwaIncomeApyPct: sourced(0, 'on-chain', 'high', 'Lending market: no separate RWA-income component.'),
-        incentiveApyNote: sourced(incentiveNote, 'static', 'low'),
+        incentiveApyNote: sourced(incentiveNote, 'on-chain', inc ? 'high' : 'low'),
         netApyEstimatePct: sourced(round(base), 'on-chain', 'high', 'Verified base supply APY only.'),
       });
     }

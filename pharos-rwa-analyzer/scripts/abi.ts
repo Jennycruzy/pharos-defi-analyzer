@@ -48,6 +48,21 @@ export const ERC4626_ABI = [
   'function maxRedeem(address owner) view returns (uint256)',
 ] as const;
 
+/** Aave-style aToken — only the incentives hook we read. */
+export const ATOKEN_ABI = [
+  'function getIncentivesController() view returns (address)',
+  'function totalSupply() view returns (uint256)',
+] as const;
+
+/**
+ * Aave-style RewardsController (incentives). Verified deployed on both OpenFi and
+ * ZonaLend; both currently return an EMPTY rewards list for the USDC aToken.
+ */
+export const REWARDS_CONTROLLER_ABI = [
+  'function getRewardsByAsset(address asset) view returns (address[])',
+  'function getRewardsData(address asset, address reward) view returns (uint256 index, uint256 emissionPerSecond, uint256 lastUpdateTimestamp, uint256 distributionEnd)',
+] as const;
+
 export const ERC20_ABI = [
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',

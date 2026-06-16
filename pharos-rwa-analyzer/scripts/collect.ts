@@ -13,6 +13,7 @@ import {
   type UserAccount,
   type UserReservePosition,
 } from './lending.js';
+import { readIncentives, type IncentiveInfo } from './incentives.js';
 import { assertPharosNetwork, type NetworkCheck } from './rpc.js';
 import { TulipaVault, type VaultInfo, type VaultPosition } from './vault.js';
 import { PharosWatchClient, type WatchHealth } from './pharoswatch.js';
@@ -29,6 +30,8 @@ export interface LendingScan {
   account: UserAccount;
   /** USD price per reserve asset (from this venue's oracle). */
   assetUsd: Record<string, number>;
+  /** On-chain incentive info per reserve asset address (lowercased). */
+  incentives: Record<string, IncentiveInfo>;
 }
 
 export interface VaultScan {
@@ -59,14 +62,22 @@ async function scanLendingVenue(
       adapter.getUserPositions(address, reserves),
       adapter.getUserAccount(address),
     ]);
-    // Price every reserve asset once via this venue's oracle.
+    // Price every reserve asset once via this venue's oracle, and read its
+    // on-chain incentive config (verified [on-chain] base for the incentive note).
     const oracle = adapter.getOracle();
     const assetUsd: Record<string, number> = {};
+    const incentives: Record<string, IncentiveInfo> = {};
+    const nowSeconds = Math.floor(Date.now() / 1000);
     for (const r of reserves) {
       try {
         assetUsd[r.address.toLowerCase()] = await oracle.getUsdPrice(r.address);
       } catch (err) {
         errors.push({ scope: `${adapter.product} price ${r.symbol}`, message: errMsg(err) });
+      }
+      try {
+        incentives[r.address.toLowerCase()] = await readIncentives(r.aTokenAddress, nowSeconds);
+      } catch (err) {
+        errors.push({ scope: `${adapter.product} incentives ${r.symbol}`, message: errMsg(err) });
       }
     }
     return {
@@ -79,6 +90,7 @@ async function scanLendingVenue(
       positions,
       account,
       assetUsd,
+      incentives,
     };
   } catch (err) {
     errors.push({ scope: `${adapter.product} scan`, message: errMsg(err) });

@@ -51,26 +51,33 @@ data-provider happens at runtime per venue.
 Phase 1 is complete and all six layers run live. These are the known gaps and
 the deliberate degradations — fix or confirm before relying on them:
 
-- **Pharos Watch NAV API is locked by default.** Data routes need
+- ✅ **RESOLVED — ZonaLend incentive source is now read on-chain.** `incentives.ts`
+  reads each aToken's `getIncentivesController()` → `getRewardsByAsset`/`getRewardsData`.
+  Verified: both OpenFi (`0x74C0…F67d`) and ZonaLend (`0xA9F4…A80C`) controllers are
+  deployed but list **0 active reward streams** for the USDC aToken. So `trueyield`'s
+  incentive note is now a `[on-chain]` high-confidence fact, not a guess. If a stream
+  ever becomes active, extend `incentives.ts` to price `emissionPerSecond` (needs the
+  reward token's decimals + USD price + aToken `totalSupply`) and surface an APY.
+- **Pharos Watch NAV API is still locked by default.** Data routes need
   `PHAROS_WATCH_API_KEY` (self-serve at https://pharos.watch/api/). Until a key is
-  set, the `nav` layer uses on-chain drift only. The exact JSON shape of the
-  key-gated routes was **not shape-verified** (no key during Step 0), so price
-  extraction in `pharoswatch.ts` is defensive/best-effort and labeled medium
-  confidence — re-verify field names once a key exists.
-- **trueyield RWA-income is empty on first run.** It needs **≥2 snapshots** to
-  measure Tulipa share-price growth. Run `snapshot`, wait, then `report`.
+  set, the `nav` layer uses on-chain drift only. Note from the OpenAPI doc: the
+  **peg/stablecoin routes are typed as opaque `JsonValue`** (no documented field
+  shape), so price extraction in `pharoswatch.ts` stays defensive/best-effort —
+  re-verify field names once a key exists. The **yield routes ARE documented**
+  (`YieldRanking.apyBase`/`apyReward`), so a future key-gated `trueyield` enrichment
+  can be schema-aligned.
+- **trueyield RWA-income needs ≥2 snapshots** (by design). It measures Tulipa
+  share-price growth between snapshots; on the very first run it reports `—`. Run
+  `snapshot`, wait, then `report`. ERC-4626 exposes no share-price history to shortcut this.
 - **Tulipa true maturity date is not sourced.** ERC-4626 redemption limits are
   on-chain; any fixed off-chain maturity date is intentionally **omitted** (not
   faked). Add it as `[static]` only once a published date is confirmed.
-- **ZonaLend's advertised ~210% has no verified on-chain incentive source.** No
-  emissions/rewards contract was located, so incentive APY is labeled and **never
-  folded into** the comparable number. If a rewards contract is found, wire it in
-  `trueyield.ts` and label it `[on-chain]`.
 - **pAlpha has no verified on-chain address** for this wallet — it is a `[static]`
   benchmark only, never read on-chain. Add reads only if a real address is verified.
 - **Phase-2 signing prerequisites unconfirmed:** EntryPoint is deployed, but the
-  **bundler URL** and a **smart-account factory** are not yet identified (probing
-  failed; need docs.pharos.xyz). See `VERIFICATION.md` → "Phase-2 signing readiness".
+  **bundler URL** and a **smart-account factory** are not yet identified (RPC/host
+  probing failed; docs.pharos.xyz root has no AA section — query its GitBook deeper).
+  See `VERIFICATION.md` → "Phase-2 signing readiness".
 - **No automated test suite.** Verification today is live (`npm run verify`) plus
   `npm run typecheck`. A recorded-fixture or mainnet-fork test harness is a TODO
   (must not introduce mocks into the analyzer's own output path).
