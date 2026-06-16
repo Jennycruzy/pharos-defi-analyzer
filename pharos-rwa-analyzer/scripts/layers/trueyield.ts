@@ -70,7 +70,9 @@ export function analyzeTrueYield(scan: WalletScan, previous: Snapshot | null): T
       baseApyPct: base,
       rwaIncomeApyPct: rwa,
       incentiveApyNote: sourced(
-        'RWA income is realized in NAV/share-price; no token incentive component assumed.',
+        'RWA income is realized in NAV/share-price growth; no token incentive component. ' +
+          'Ember updates this vault\'s share price ~twice weekly (Tue/Fri), so space snapshots ' +
+          '>=4 days apart to capture a real change (otherwise RWA-income reads 0).',
         'static',
         'low',
       ),
@@ -94,7 +96,8 @@ function annualizedSharePriceApy(scan: WalletScan, previous: Snapshot | null): S
       null,
       'on-chain',
       'low',
-      'Needs >=2 snapshots to measure RWA income. Run `snapshot` now and again later.',
+      'Needs >=2 snapshots to measure RWA income. Ember updates share price ~twice weekly ' +
+        '(Tue/Fri) — take a snapshot now and another >=4 days later for a meaningful reading.',
     );
   }
   const dtSeconds = scan.network ? Math.max(1, Math.floor(Date.now() / 1000) - previous.takenAt) : 1;

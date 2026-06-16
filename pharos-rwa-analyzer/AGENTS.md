@@ -70,9 +70,15 @@ the deliberate degradations — fix or confirm before relying on them:
 - **trueyield RWA-income needs ≥2 snapshots** (by design). It measures Tulipa
   share-price growth between snapshots; on the very first run it reports `—`. Run
   `snapshot`, wait, then `report`. ERC-4626 exposes no share-price history to shortcut this.
-- **Tulipa true maturity date is not sourced.** ERC-4626 redemption limits are
-  on-chain; any fixed off-chain maturity date is intentionally **omitted** (not
-  faked). Add it as `[static]` only once a published date is confirmed.
+- ✅ **RESOLVED — Tulipa has no maturity date (premise was wrong).** Ember's Pharos
+  vaults are **open-ended share-based-growth** vaults, not fixed-term instruments.
+  Confirmed: tulPRWA exposes no maturity/cooldown getter and is fully redeemable now
+  (`maxWithdraw` == balance), which the `maturity` layer already reports on-chain.
+  The real time dimension is a **withdrawal duration** (the sibling eEARN vault shows
+  "3 Days"; tulPRWA's isn't on-chain-readable). Ember updates share price **~twice
+  weekly (Tue/Fri)** — `trueyield` now tells users to space snapshots >=4 days apart.
+  NOTE: **eEARN (`0x9b…aFA2`) is a DIFFERENT vault** from tulPRWA (`0xbae9…aec5`) —
+  do not copy eEARN's fees/terms onto Tulipa; verify per-vault.
 - **pAlpha has no verified on-chain address** for this wallet — it is a `[static]`
   benchmark only, never read on-chain. Add reads only if a real address is verified.
 - ✅ **MOSTLY RESOLVED — Phase-2 AA infra confirmed.** The docs predeploy table was
