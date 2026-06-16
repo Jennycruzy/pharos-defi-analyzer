@@ -1,0 +1,107 @@
+/**
+ * Layer 3 — trueyield. Decompose each position's yield into a single comparable,
+ * HONEST number: base interest vs RWA income vs incentive emissions, net of fees.
+ *
+ *  - Lending base APY: from getReserveData.currentLiquidityRate (already net of
+ *    the reserve factor — it's the supply rate). [on-chain]
+ *  - Tulipa RWA income: annualized ERC-4626 share-price change between the
+ *    previous snapshot and now. Needs >=2 snapshots; otherwise null + note. [on-chain]
+ *  - Incentive/advertised APY (e.g. Zona ~210%): shown ONLY as a labeled note,
+ *    NOT added to the comparable number, because no on-chain incentive source was
+ *    verified. We rank on the verified base/RWA components. [static note]
+ */
+
+import { THRESHOLDS } from '../config.js';
+import type { WalletScan } from '../collect.js';
+import type { Snapshot } from '../snapshot.js';
+import { sourced, type Sourced } from '../types.js';
+
+export interface YieldEntry {
+  product: string;
+  asset: string;
+  baseApyPct: Sourced<number>;
+  rwaIncomeApyPct: Sourced<number>;
+  incentiveApyNote: Sourced<string>;
+  /** The one comparable number: sum of VERIFIED components only. */
+  netApyEstimatePct: Sourced<number>;
+}
+
+export interface TrueYieldResult {
+  layer: 'trueyield';
+  entries: YieldEntry[];
+}
+
+export function analyzeTrueYield(scan: WalletScan, previous: Snapshot | null): TrueYieldResult {
+  const entries: YieldEntry[] = [];
+
+  for (const l of scan.lending) {
+    // Report every reserve's base supply APY as a benchmark, flag the ones held.
+    for (const r of l.reserves) {
+      const held = l.positions.some((p) => p.symbol === r.symbol && p.suppliedAmount > 0);
+      const base = r.supplyApyPct;
+      // Zona advertises a high incentive total; only label, never fold into the number.
+      const incentiveNote =
+        l.product === 'ZonaLend'
+          ? 'Advertised total (incl. incentive emissions, ~210% claimed) is NOT on-chain verified; not counted here.'
+          : 'No on-chain incentive source verified for this market; not counted.';
+      entries.push({
+        product: l.product,
+        asset: r.symbol + (held ? ' (held)' : ''),
+        baseApyPct: sourced(round(base), 'on-chain', 'high'),
+        rwaIncomeApyPct: sourced(0, 'on-chain', 'high', 'Lending market: no separate RWA-income component.'),
+        incentiveApyNote: sourced(incentiveNote, 'static', 'low'),
+        netApyEstimatePct: sourced(round(base), 'on-chain', 'high', 'Verified base supply APY only.'),
+      });
+    }
+  }
+
+  // Tulipa: RWA income from share-price drift between snapshots.
+  if (scan.vault) {
+    const { info } = scan.vault;
+    const rwa = annualizedSharePriceApy(scan, previous);
+    const base = sourced(0, 'on-chain', 'high', 'Vault yield is realized as share-price growth, shown as RWA income.');
+    entries.push({
+      product: info.product,
+      asset: info.symbol,
+      baseApyPct: base,
+      rwaIncomeApyPct: rwa,
+      incentiveApyNote: sourced(
+        'RWA income is realized in NAV/share-price; no token incentive component assumed.',
+        'static',
+        'low',
+      ),
+      netApyEstimatePct:
+        rwa.value === null
+          ? sourced<number>(null, 'on-chain', 'low', rwa.note ?? 'Insufficient snapshot history.')
+          : sourced<number>(round(rwa.value), 'on-chain', 'medium', 'Annualized share-price growth since last snapshot.'),
+    });
+  }
+
+  return { layer: 'trueyield', entries };
+}
+
+/** Annualize Tulipa share-price change between the previous snapshot and now. */
+function annualizedSharePriceApy(scan: WalletScan, previous: Snapshot | null): Sourced<number> {
+  if (!scan.vault) return sourced<number>(null, 'on-chain', 'low', 'No vault.');
+  const now = scan.vault.info.sharePrice;
+  const prevPos = previous?.positions.find((p) => p.product === scan.vault!.info.product);
+  if (!previous || !prevPos || prevPos.sharePrice === null || prevPos.sharePrice <= 0) {
+    return sourced<number>(
+      null,
+      'on-chain',
+      'low',
+      'Needs >=2 snapshots to measure RWA income. Run `snapshot` now and again later.',
+    );
+  }
+  const dtSeconds = scan.network ? Math.max(1, Math.floor(Date.now() / 1000) - previous.takenAt) : 1;
+  const growth = now / prevPos.sharePrice - 1; // fractional growth over the interval
+  const apy = ((1 + growth) ** (THRESHOLDS.secondsPerYear / dtSeconds) - 1) * 100;
+  if (!Number.isFinite(apy)) {
+    return sourced<number>(null, 'on-chain', 'low', 'Share price unchanged or interval too short to annualize.');
+  }
+  return sourced(round(apy), 'on-chain', 'medium');
+}
+
+function round(n: number): number {
+  return Math.round(n * 1e6) / 1e6;
+}

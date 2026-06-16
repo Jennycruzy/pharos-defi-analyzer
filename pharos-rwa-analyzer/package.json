@@ -1,0 +1,30 @@
+{
+  "name": "pharos-rwa-analyzer",
+  "version": "1.0.0",
+  "description": "Read-only Pharos mainnet RWA + DeFi position analyzer (Phase 1).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "analyze": "tsx scripts/cli.ts",
+    "verify": "tsx scripts/cli.ts verify",
+    "report": "tsx scripts/cli.ts report",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "pharos",
+    "rwa",
+    "defi",
+    "erc4626",
+    "aave"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "ethers": "^6.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
+  }
+}

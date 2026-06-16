@@ -1,0 +1,169 @@
+# VERIFICATION.md — Step 0 Live-Mainnet Results
+
+Every line below was confirmed against **live Pharos mainnet (chain 1672)** and
+the real Pharos Watch API on **2026-06-16**. Nothing here is assumed. Where a
+thing could not be confirmed, it is marked **DEGRADE** and the analyzer omits or
+clearly labels it rather than guessing. Re-run `npm run verify` to reproduce.
+
+---
+
+## A. RPC sanity — ✅ CONFIRMED
+
+| Check | Method | Result |
+| --- | --- | --- |
+| RPC reachable | `https://rpc.pharos.xyz` | answers |
+| Chain ID | `eth_chainId` | `0x688` = **1672** ✅ (mainnet) |
+| Head block | `eth_blockNumber` | `0x9be1c0` ≈ **10,215,960** (live) |
+
+The analyzer re-checks chain id on every run (`scripts/rpc.ts`) and **refuses to
+run** if it is not 1672 (unless `--allow-testnet` is passed for the 688688
+testnet convenience toggle). Mainnet is the default and the network of all
+results.
+
+---
+
+## B. OpenFi (Aave-style lending) — ✅ CONFIRMED, full feature
+
+| Item | Address / Value | Source |
+| --- | --- | --- |
+| Pool | `0x30b2e1411fd2ed9f1f46f59497e2186ce5be3b26` | given, reads OK |
+| ADDRESSES_PROVIDER() | `0x3078361290234F1269034e6f9aF90A7512159fb1` | on-chain |
+| getPriceOracle() | `0x878aF9E17C0168bBCdB4f33890Bf8CDE7592a6d1` | on-chain (matches expected) |
+| getPoolDataProvider() | `0x3EF4724f0f2fabfA0ba96AfC711D64e6BE3367Fb` | on-chain |
+| Reserves (`getAllReservesTokens`) | USDC, WETH, WPROS | on-chain |
+| USDC | `0xC879C018dB60520F4355C26eD1a6D572cdAC1815`, 6 decimals | on-chain |
+| WETH | `0x1f4b7011Ee3d53969bb67F59428a9ec0477856E9` | on-chain |
+| WPROS | `0x52C48d4213107b20bC583832b0d951FB9CA8F0B0` | on-chain |
+
+- `getReserveData(USDC)` returns the Aave V3 struct. The supply rate is field
+  **`currentLiquidityRate`** (3rd field of the struct, *not* index 5 — the prompt's
+  "index 5" referred to an older flat-array layout; we decode by **named struct
+  fields** to be safe). Live value `9017859879489446740329543` ray ÷ 1e27 ×100 =
+  **0.9018 % base supply APR**. Sane. ✅
+- `getReserveConfigurationData(USDC)` (on the data provider): decimals 6,
+  **LTV 7500 (75%)**, **liqThreshold 7800 (78%)**, liqBonus 10500, reserveFactor
+  1000, collateral ✔, borrowing ✔, **isActive=true, isFrozen=false**. ✅
+- Oracle `getAssetPrice(USDC)` = `99969492` ÷ 1e8 = **$0.999695**, and
+  `BASE_CURRENCY_UNIT()` = `100000000` (1e8) confirms the **8-decimal** USD base. ✅
+
+---
+
+## C. ZonaLend (Aave-style lending) — ✅ CONFIRMED, full feature (own deployment)
+
+ZonaLend is Aave-style but a **separate deployment** from OpenFi — its own
+AddressesProvider, oracle, and data provider. We do **not** assume it equals
+OpenFi byte-for-byte; we resolve each venue's oracle/data-provider from its own
+AddressesProvider at runtime.
+
+| Item | Address | Source |
+| --- | --- | --- |
+| USDC market / Pool | `0xda464e68208a3083eb65fe5c522a72aed1c1372a` | given, reads OK |
+| PROS market | `0xb6e6826ad767f2323d2fa7af6144b6dfdf096c9f` | given |
+| ADDRESSES_PROVIDER() | `0x923f847549713650b7F66b0052B70d5D3216e41A` | on-chain |
+| getPriceOracle() | `0x6bEDfCa244f29dD916fe7c50e1469C6188B873f9` | on-chain |
+| getPoolDataProvider() | `0xA91424C666193C2b2fb684E25dEadf03B333f49A` | on-chain |
+| getPool() | `0xda464e68208A3083Eb65FE5c522a72AeD1C1372a` (== USDC market) | on-chain |
+| Reserves | USDC, WETH, WPROS | on-chain |
+
+- `getReserveData(USDC)` works (same Aave struct). Live `currentLiquidityRate`
+  = `78116995123006713467` ray ÷ 1e27 ×100 = **~0.0000078 % base supply APR** —
+  i.e. **base yield ≈ 0**. This is the key honesty point: Zona's advertised
+  ~210% is **not** in the base supply rate; it would come from incentive
+  emissions, which are **not** exposed by this read. `trueyield` ranks on the
+  verified base rate and labels any advertised total as unverified. ✅
+- Calling the market as an ERC20 reverts (`"Fallback not allowed"`) — confirms
+  the market address is a **Pool**, not a token. Reads go through the pool/data
+  provider, exactly as built.
+
+---
+
+## D. Tulipa Multi-RWA Vault — ✅ ERC-4626 CONFIRMED
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Vault | `0xbae9272f71db2dc9d053e3c6c4840df65ae6aec5` | given |
+| name / symbol / decimals | "Ember TulipaPRWA" / `tulPRWA` / **6** | on-chain |
+| `asset()` | `0xC879…1815` = **USDC** | on-chain |
+| `totalAssets()` | `509770951` = **509.77 USDC** | on-chain |
+| `totalSupply()` | `509770951` shares | on-chain |
+| `convertToAssets(1e6)` | `1000000` ⇒ **share price = 1.000000 USDC** | on-chain |
+| `previewRedeem`, `maxWithdraw`, `maxRedeem` | all respond | on-chain |
+
+**ERC-4626 confirmed** ⇒ maturity (layer 2), trueyield RWA-income (layer 3) and
+nav share-price cross-check (layer 5) all read **on-chain**.
+
+### Owner's real position (the wallet that deposited)
+- The deposit tx `0x0a6c…b19d` was sent **from**
+  `0x0Ac6bf160e208e67AF06d7F00c92AEfBbf089f95` — this is the **owner/demo wallet**
+  the analyzer is tested against.
+- On-chain now: `balanceOf(owner)=110000` (**0.11 tulPRWA**), `maxWithdraw=110000`
+  (0.11 USDC redeemable), `maxRedeem=110000`. Wallet USDC balance `170772`
+  (**0.170772 USDC**). Real, tiny, honest numbers — no rounding to look bigger.
+
+### Deposit interface (Phase-2 relevant, NOT used by this read-only analyzer)
+The deposit tx input decodes to selector **`0x50921b23`** with args:
+`(uint256 amount=100000, address receiver=owner, uint256 deadline, uint8 v,
+bytes32 r, bytes32 s)`. So **Tulipa deposits are signature-gated** (a permit /
+allowlisted-signer style call), which is why "the owner deposited successfully,
+so it's open to them" — they were issued a signature. **Reads are standard
+ERC-4626**; only the *write* path needs the off-chain signature. The analyzer
+never deposits.
+
+---
+
+## E. Pharos Watch (NAV / depeg API) — ⚠️ PARTIAL: key-gated, degrade gracefully
+
+| Check | Result |
+| --- | --- |
+| Base URL | `https://api.pharos.watch` (confirmed JSON host) |
+| `GET /api/health` (exempt, **no key**) | `200 {"status":"healthy",…}` — upstream provider **DefiLlama**, USDC snapshot ~400 s old |
+| `GET /api/peg-summary` (no key) | **401** `"Unauthorized: valid X-API-Key required"` |
+| `GET /api/depeg-events` (no key) | **401** |
+| OpenAPI catalogue | `https://pharos.watch/openapi.json` — 38 routes incl. `/api/peg-summary`, `/api/depeg-events`, `/api/stablecoin/{id}`, `/api/stablecoins`, `/api/yield-rankings` |
+
+**What this means for layer 5 (nav):**
+- All *data* routes require `X-API-Key: ph_live_…` (self-serve keys at
+  `https://pharos.watch/api/`). The exempt routes are only `/api/health`, OG
+  images, and a few POSTs.
+- Pharos Watch tracks **global stablecoins** (DefiLlama-sourced; IDs like
+  `usdc-circle`, `usdt-tether`, `paxg-paxos`). It does **not** track the
+  Pharos-native vault token `tulPRWA` or per-market aTokens.
+
+**Graceful behaviour built:**
+1. Always confirm reachability via `/api/health` (no key) so the wiring is proven.
+2. If `PHAROS_WATCH_API_KEY` is set in `.env`, query `/api/peg-summary` /
+   `/api/stablecoin/{id}` for the global peg reference of USDC's issuer — labeled
+   **`[api]`**.
+3. Always cross-check on-chain: Tulipa **ERC-4626 share-price drift** and the
+   OpenFi **oracle USD price** of USDC/WETH/WPROS — labeled **`[on-chain]`**.
+4. If no key, layer 5 still produces on-chain NAV/depeg flags and clearly states
+   the API portion is unavailable. Nothing is faked.
+
+---
+
+## Phase-2 signing readiness (record only — this analyzer signs NOTHING)
+
+| Probe | Result |
+| --- | --- |
+| **EntryPoint** `0x0000000071727De22E5E9d8BAf0edAc6f37da032` | `eth_getCode` returns **32,072 hex chars ≈ 16 KB bytecode** — **deployed & confirmed** ✅ (ERC-4337 v0.7 EntryPoint) |
+| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler (RPC error). Guessed hosts (`bundler.pharos.xyz`, etc.) did not respond. **NOT FOUND via probing — needs the official bundler URL from docs.pharos.xyz.** |
+| **Smart-account factory** | No verified factory address yet. **TODO Phase 2:** locate via docs or decode a smart-account-creation tx, then `eth_getCode` it. |
+| **Tulipa write path** | Signature-gated deposit `0x50921b23(amount,receiver,deadline,v,r,s)` — Phase-2 deposits need the allowlisted signer. |
+
+**Phase-2 decision input:** EntryPoint is live, so ERC-4337 is viable. Because a
+bundler + session-key-capable factory are **not yet confirmed**, the safe default
+for Phase 2 is the **scoped-wallet + policy** path until a bundler URL and a
+session-key factory are verified from docs; then session-keys become an option.
+
+---
+
+## Confirmed-vs-Degraded summary
+
+| Layer | Status | Why |
+| --- | --- | --- |
+| eligibility | ✅ Confirmed | reserve active/frozen + access map, all on-chain |
+| maturity | ✅/⚠️ On-chain limits; off-chain dates labeled | ERC-4626 `maxWithdraw`/`maxRedeem` live; true maturity dates not on-chain |
+| trueyield | ✅ Confirmed | base APR from `currentLiquidityRate`; RWA income from share-price snapshots; incentives labeled unverified |
+| risk | ✅ Confirmed | oracle USD pricing (8-dp) + HF/liquidation + concentration |
+| nav | ⚠️ Partial | on-chain drift always; Pharos Watch API needs key |
+| diff | ✅ Confirmed | local JSON snapshots, pure reads |
