@@ -21,6 +21,7 @@ import { analyzeNav } from '../scripts/layers/nav.js';
 import { analyzeTrueYield } from '../scripts/layers/trueyield.js';
 import { analyzeMaturity } from '../scripts/layers/maturity.js';
 import { buildSnapshot } from '../scripts/layers/diff.js';
+import { getReport, getLayer } from '../scripts/api.js';
 
 const OWNER = '0x0Ac6bf160e208e67AF06d7F00c92AEfBbf089f95';
 
@@ -155,6 +156,23 @@ test('snapshot builds from a live scan with a consistent pinned block', async ()
   assert.equal(snap.chainId, PHAROS.mainnetChainId.toString());
   assert.ok(Array.isArray(snap.positions));
   for (const p of snap.positions) assert.equal(typeof p.product, 'string');
+});
+
+test('api.getReport returns the full structured shape the MCP server serves', async () => {
+  const report = await getReport(OWNER, false);
+  for (const key of ['meta', 'snapshot', 'eligibility', 'maturity', 'trueyield', 'risk', 'nav', 'diff', 'errors']) {
+    assert.ok(key in report, `report should include "${key}"`);
+  }
+  assert.equal(report.meta.readOnly, true, 'report must declare itself read-only');
+  assert.equal(report.meta.address, OWNER);
+  assert.equal(report.meta.network.chainId, PHAROS.mainnetChainId.toString());
+  assert.ok(report.meta.network.block > 0, 'meta should carry the pinned block');
+});
+
+test('api.getLayer returns a single labeled layer', async () => {
+  const out = await getLayer('eligibility', OWNER, false);
+  assert.equal(out['address'], OWNER);
+  assert.ok('eligibility' in out, 'should return the requested layer');
 });
 
 // Key-gated: only runs when a real Pharos Watch key is configured, so the [api]

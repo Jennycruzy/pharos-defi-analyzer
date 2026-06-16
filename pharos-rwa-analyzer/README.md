@@ -19,7 +19,9 @@ value is tagged with its source: `[on-chain]`, `[api]`, or `[static]`.
 - [The six layers](#the-six-layers-each-a-command)
 - [Data sources & integrations](#data-sources--integrations)
 - [Setup](#setup)
-- [Usage](#usage)
+- [Usage (CLI)](#usage)
+- [Use it as an MCP server (for agents)](#use-it-as-an-mcp-server-for-agents)
+- [Use it as a library](#use-it-as-a-library-programmatic-api)
 - [Pharos Watch API](#pharos-watch-api-the-api-data-source)
 - [Real example output](#real-example-output-default-owner-wallet-live-mainnet)
 - [Output for agents (`--json` shape)](#output-for-agents---json-shape)
@@ -107,6 +109,77 @@ npm run verify                                   # re-run Step-0 live verificati
 Flags: `--address` (defaults to the verified owner wallet), `--json` (structured
 output), `--allow-testnet` (permit chain 688688; **mainnet is the default and the
 network of all results**).
+
+---
+
+## Use it as an MCP server (for agents)
+
+This skill ships a **Model Context Protocol** server so any MCP-capable agent
+(Claude Desktop, IDE assistants, custom agents) can call it **in natural language**.
+The tools are **read-only** and return the exact same structured JSON as the CLI
+(shared via `scripts/api.ts`, so they can never drift). The server signs nothing
+and holds no key.
+
+**Start it:**
+
+```bash
+npm run mcp          # stdio transport; logs "MCP server ready" to stderr
+```
+
+**Register it** with an MCP client. Example `claude_desktop_config.json` (or any
+client's `mcpServers` block):
+
+```jsonc
+{
+  "mcpServers": {
+    "pharos-rwa-analyzer": {
+      "command": "npx",
+      "args": ["tsx", "scripts/mcp.ts"],
+      "cwd": "/absolute/path/to/pharos-rwa-analyzer",
+      "env": {
+        "PHAROS_WATCH_API_KEY": "…optional, unlocks the [api] NAV layer…"
+      }
+    }
+  }
+}
+```
+
+**Tools exposed:**
+
+| Tool | What it does | Arguments |
+| --- | --- | --- |
+| `pharos_report` | Full six-layer report for a wallet | `address?`, `allowTestnet?` |
+| `pharos_analyze_layer` | One layer only | `layer` (`eligibility`/`maturity`/`trueyield`/`risk`/`nav`/`diff`), `address?`, `allowTestnet?` |
+| `pharos_verify` | Live infra health (chain id, venue oracles, AA predeploys, Watch) | `allowTestnet?` |
+| `pharos_snapshot` | Save a snapshot so a later `diff` has a baseline (writes local JSON only) | `address?`, `allowTestnet?` |
+
+`address` defaults to the configured wallet; everything is mainnet (1672) unless
+`allowTestnet` is set. See **`AGENTS.md`** for the natural-language usage guide an
+agent should read (what to say, how to interpret the source labels and `null`s).
+
+**Natural-language → tool, examples an agent will map automatically:**
+- "Give me a full position report for 0xABC on Pharos" → `pharos_report { address: "0xABC" }`
+- "What's the real yield on this wallet?" → `pharos_analyze_layer { layer: "trueyield" }`
+- "Is anything depegged right now?" → `pharos_analyze_layer { layer: "nav" }`
+- "Is Pharos infra healthy?" → `pharos_verify {}`
+- "Save the current state so we can compare later" → `pharos_snapshot {}`
+
+---
+
+## Use it as a library (programmatic API)
+
+Other TypeScript agents can import the analyzer directly instead of shelling out:
+
+```ts
+import { getReport, getLayer, getVerify } from './scripts/api.js';
+
+const report = await getReport('0xABC…');          // full structured report
+const risk   = await getLayer('risk', '0xABC…');   // one layer
+const health = await getVerify();                  // infra check
+```
+
+These are the same functions the CLI and MCP server use — one source of truth for
+the output shape.
 
 ---
 
@@ -280,14 +353,15 @@ All account-abstraction predeploys below are **confirmed deployed on mainnet**
 npm test   # live integration tests against mainnet (no mocks)
 ```
 
-19 checks total. The **live** checks assert real on-chain invariants that catch
+21 checks total. The **live** checks assert real on-chain invariants that catch
 the classic failure modes (wrong network, wrong decimals, unscaled ray APY, wrong
-oracle base unit, broken source-labeling, withdrawable-exceeds-liquidity). The
-**pure-logic** checks (`tests/unit.test.ts`) verify the diff engine and the
-per-collateral liquidation math with hand-built inputs — needed because the demo
-wallet carries no debt, so the liquidation path can't be triggered live. A
-key-gated test exercises the Pharos Watch `[api]` branch when `PHAROS_WATCH_API_KEY`
-is set, and self-skips (never fakes) when it isn't. No mocked chain data anywhere.
+oracle base unit, broken source-labeling, withdrawable-exceeds-liquidity), plus the
+shared `api.getReport`/`getLayer` shape the MCP server serves. The **pure-logic**
+checks (`tests/unit.test.ts`) verify the diff engine and the per-collateral
+liquidation math with hand-built inputs — needed because the demo wallet carries no
+debt, so the liquidation path can't be triggered live. A key-gated test exercises
+the Pharos Watch `[api]` branch when `PHAROS_WATCH_API_KEY` is set, and self-skips
+(never fakes) when it isn't. No mocked chain data anywhere.
 
 ---
 
@@ -307,7 +381,9 @@ scripts/
   collect.ts     one-pass collector feeding all layers (one pinned block)
   types.ts       Sourced<T> — structural enforcement of source labeling
   layers/        eligibility · maturity · trueyield · risk · nav · diff
-  cli.ts         commands + --json + --address
+  api.ts         programmatic API — one source of truth for the report shape
+  cli.ts         CLI commands + --json + --address (uses api.ts)
+  mcp.ts         Model Context Protocol server for agents (uses api.ts)
 ```
 
 **Consistency & performance.** Every read in a run is batched through Multicall3

@@ -47,7 +47,24 @@ Optional `.env` settings:
   Watch API"). Without it, the `nav` layer still works on-chain and says so.
 - `DEFAULT_ADDRESS` — the wallet to analyze when `--address` isn't given.
 
-## How to run it
+## Two ways to call it
+
+### A) As MCP tools (preferred for agents)
+
+Start the server (`npm run mcp`) or register it in your MCP client (see
+`README.md` → "Use it as an MCP server"). You then get four read-only tools:
+
+| Tool | Use it when the user… | Arguments |
+| --- | --- | --- |
+| `pharos_report` | wants the full picture of a wallet | `address?`, `allowTestnet?` |
+| `pharos_analyze_layer` | asks about one thing (yield, risk, depeg, eligibility, lockups, changes) | `layer`, `address?`, `allowTestnet?` |
+| `pharos_verify` | asks whether Pharos / the integrations are healthy | `allowTestnet?` |
+| `pharos_snapshot` | wants to save state now to compare later | `address?`, `allowTestnet?` |
+
+`layer` is one of `eligibility`, `maturity`, `trueyield`, `risk`, `nav`, `diff`.
+`address` defaults to the configured wallet; omit `allowTestnet` for mainnet.
+
+### B) As a CLI
 
 ```bash
 npm run analyze -- <command> [--address 0x..] [--json] [--allow-testnet]

@@ -12,17 +12,16 @@
  */
 
 import { ethers } from 'ethers';
-import { AA_PREDEPLOYS, DEFAULT_ADDRESS, LENDING_VENUES } from './config.js';
-import { assertPharosNetwork, getProvider } from './rpc.js';
+import { DEFAULT_ADDRESS } from './config.js';
 import { collectWalletScan, type WalletScan } from './collect.js';
 import { analyzeEligibility } from './layers/eligibility.js';
 import { analyzeMaturity } from './layers/maturity.js';
 import { analyzeTrueYield } from './layers/trueyield.js';
-import { analyzeRisk, type RiskResult } from './layers/risk.js';
+import { analyzeRisk } from './layers/risk.js';
 import { analyzeNav } from './layers/nav.js';
 import { analyzeDiff, buildSnapshot } from './layers/diff.js';
 import { loadPrevious, saveSnapshot, snapshotDir, type Snapshot } from './snapshot.js';
-import { PharosWatchClient } from './pharoswatch.js';
+import { buildReport, getVerify, usdMap } from './api.js';
 import type { Sourced } from './types.js';
 
 const COMMANDS = ['verify', 'eligibility', 'maturity', 'trueyield', 'risk', 'nav', 'diff', 'snapshot', 'report'] as const;
@@ -77,13 +76,6 @@ function trim(n: number): string {
 }
 function h(title: string): void {
   console.log(`\n${title}\n${'─'.repeat(title.length)}`);
-}
-
-/** USD-by-position map (key "Product:ASSET") derived from the risk layer. */
-function usdMap(risk: RiskResult): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const p of risk.perPosition) m.set(`${p.product}:${p.asset}`, p.suppliedUsd);
-  return m;
 }
 
 async function main(): Promise<void> {
@@ -148,83 +140,36 @@ function json(obj: unknown): string {
 
 // ---------------------------------------------------------------- verify ----
 async function runVerify(asJson: boolean): Promise<void> {
-  const net = await assertPharosNetwork(true);
-  const provider = getProvider();
-  const venues: Array<Record<string, unknown>> = [];
-  for (const v of LENDING_VENUES) {
-    const ap = new ethers.Contract(v.addressesProvider, ['function getPriceOracle() view returns (address)', 'function getPoolDataProvider() view returns (address)'], provider);
-    try {
-      const [oracle, dp] = await Promise.all([ap.getPriceOracle(), ap.getPoolDataProvider()]);
-      venues.push({ product: v.product, addressesProvider: v.addressesProvider, oracle, dataProvider: dp });
-    } catch (err) {
-      venues.push({ product: v.product, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-  const aa = await Promise.all(
-    AA_PREDEPLOYS.map(async (c) => {
-      const code = await provider.getCode(c.address);
-      return { name: c.name, address: c.address, deployed: code !== '0x', bytecodeBytes: (code.length - 2) / 2 };
-    }),
-  );
-  const watch = await new PharosWatchClient().health();
-
-  const result = {
-    network: { chainId: net.chainId.toString(), blockNumber: net.blockNumber, isMainnet: net.isMainnet, rpc: net.rpcUrl },
-    lendingVenues: venues,
-    aaPredeploys: aa,
-    pharosWatch: { reachable: watch.reachable, status: watch.status, upstreamProvider: watch.upstreamProvider, keyConfigured: new PharosWatchClient().isConfigured() },
-  };
+  const result = await getVerify(true); // shared with the MCP server via api.ts
 
   if (asJson) {
     console.log(json(result));
     return;
   }
   h('STEP-0 LIVE VERIFICATION');
-  console.log(`Network         : chainId ${result.network.chainId} ${net.isMainnet ? '(Pharos mainnet ✓)' : '(NOT mainnet)'} block ${net.blockNumber}`);
-  console.log(`RPC             : ${net.rpcUrl}`);
-  for (const v of venues) {
+  console.log(`Network         : chainId ${result.network.chainId} ${result.network.isMainnet ? '(Pharos mainnet ✓)' : '(NOT mainnet)'} block ${result.network.blockNumber}`);
+  console.log(`RPC             : ${result.network.rpc}`);
+  for (const v of result.lendingVenues) {
     if (v['error']) console.log(`${String(v['product']).padEnd(15)} : ERROR ${String(v['error'])}`);
     else console.log(`${String(v['product']).padEnd(15)} : oracle ${v['oracle']}  dataProvider ${v['dataProvider']}`);
   }
   console.log('AA predeploys   : (Phase-2 prep — this app signs nothing)');
-  for (const c of aa) {
+  for (const c of result.aaPredeploys) {
     console.log(`  ${c.deployed ? '✓' : '✗'} ${c.name.padEnd(22)} ${String(c.bytecodeBytes).padStart(6)} bytes  ${c.address}`);
   }
-  console.log(`Pharos Watch    : health ${watch.reachable ? '✓' : '✗'} status=${watch.status ?? 'n/a'} upstream=${watch.upstreamProvider ?? 'n/a'} key=${result.pharosWatch.keyConfigured ? 'set' : 'not set'}`);
+  console.log(`Pharos Watch    : health ${result.pharosWatch.reachable ? '✓' : '✗'} status=${result.pharosWatch.status ?? 'n/a'} upstream=${result.pharosWatch.upstreamProvider ?? 'n/a'} key=${result.pharosWatch.keyConfigured ? 'set' : 'not set'}`);
 }
 
 // ---------------------------------------------------------------- report ----
 async function runReport(scan: WalletScan, previous: Snapshot | null, args: Args): Promise<void> {
-  const eligibility = analyzeEligibility(scan);
-  const maturity = analyzeMaturity(scan);
-  const trueyield = analyzeTrueYield(scan, previous);
-  const risk = analyzeRisk(scan);
-  const nav = await analyzeNav(scan);
-  const current = buildSnapshot(scan, usdMap(risk));
-  const diff = analyzeDiff(current, previous);
-
   if (args.json) {
-    // The Phase-2 bridge: one structured, source-labeled object.
-    console.log(
-      json({
-        meta: {
-          generatedAt: Math.floor(Date.now() / 1000),
-          address: scan.address,
-          network: { chainId: scan.network.chainId.toString(), block: scan.network.blockNumber },
-          readOnly: true,
-        },
-        snapshot: current,
-        eligibility,
-        maturity,
-        trueyield,
-        risk,
-        nav,
-        diff,
-        errors: scan.errors,
-      }),
-    );
+    // The Phase-2 bridge: one structured, source-labeled object (shared with MCP via api.ts).
+    console.log(json(await buildReport(scan, previous)));
     return;
   }
+
+  const nav = await analyzeNav(scan);
+  const diff = analyzeDiff(buildSnapshot(scan, usdMap(analyzeRisk(scan))), previous);
 
   h(`PHAROS RWA POSITION REPORT — ${scan.address}`);
   console.log(`Network: Pharos mainnet (chain ${scan.network.chainId}) @ block ${scan.network.blockNumber}`);

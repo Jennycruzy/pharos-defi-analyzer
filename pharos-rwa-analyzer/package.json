@@ -1,13 +1,18 @@
 {
   "name": "pharos-rwa-analyzer",
-  "version": "1.0.0",
-  "description": "Read-only Pharos mainnet RWA + DeFi position analyzer (Phase 1).",
+  "version": "1.1.0",
+  "description": "Read-only Pharos mainnet RWA + DeFi position analyzer (Phase 1) with an MCP server for agents.",
   "type": "module",
   "private": true,
+  "bin": {
+    "pharos-rwa-analyzer": "scripts/cli.ts",
+    "pharos-rwa-analyzer-mcp": "scripts/mcp.ts"
+  },
   "scripts": {
     "analyze": "tsx scripts/cli.ts",
     "verify": "tsx scripts/cli.ts verify",
     "report": "tsx scripts/cli.ts report",
+    "mcp": "tsx scripts/mcp.ts",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -16,12 +21,16 @@
     "rwa",
     "defi",
     "erc4626",
-    "aave"
+    "aave",
+    "mcp",
+    "model-context-protocol"
   ],
   "license": "ISC",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
-    "ethers": "^6.16.0"
+    "ethers": "^6.16.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",

@@ -12,8 +12,11 @@ mainnet (chain 1672)** — read-only, live on-chain data, no mocks.
   value tagged with its source (`[on-chain]`, `[api]`, or `[static]`). It never
   signs, never holds a key, never moves funds.
 
+  Usable three ways: a **CLI**, an **MCP server** (so other agents can call it in
+  natural language), and an importable **TypeScript library**.
+
   See **[`pharos-rwa-analyzer/README.md`](./pharos-rwa-analyzer/README.md)** for full
-  documentation, setup, and example output.
+  documentation, setup, MCP configuration, and example output.
 
 ## Quick start
 
@@ -22,6 +25,7 @@ cd pharos-rwa-analyzer
 npm install
 npm run verify                  # live Step-0 verification against mainnet
 npm run analyze -- report       # full six-layer picture for the default wallet
+npm run mcp                     # start the MCP server for agents (read-only)
 ```
 
 No API keys are required. See the subproject README for optional `.env` settings
