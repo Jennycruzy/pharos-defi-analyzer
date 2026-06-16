@@ -15,6 +15,12 @@ Use it three ways — a **CLI**, an **MCP server** for other agents, and an impo
 **TypeScript library** — and every report carries a **replayable proof** (pinned
 block + hash + the exact reads performed) so anyone can reproduce it.
 
+> **Project layout.** The app lives in [`pharos-rwa-analyzer/`](./pharos-rwa-analyzer/).
+> Every `npm …` command and every `scripts/…`, `tests/…`, and sibling-doc path below
+> (e.g. `VERIFICATION.md`, `AGENTS.md`, `NON_TECHNICAL_SUMMARY.md`) is **relative to
+> that directory** — the Setup block `cd`s into it first. The CI workflow
+> (`.github/workflows/ci.yml`) is at the repo root.
+
 ---
 
 ## Contents
@@ -464,7 +470,7 @@ just skips). The secret is never committed; locally it lives only in the gitigno
 ## Architecture
 
 ```
-scripts/
+pharos-rwa-analyzer/scripts/
   config.ts      network, verified addresses, Pharos Watch base, thresholds
   abi.ts         Aave-style + ERC-4626 + ERC20 ABIs (all exercised live)
   rpc.ts         provider + hard chain-id (1672) sanity gate
