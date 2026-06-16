@@ -142,16 +142,29 @@ Pharos Watch    : health ✓ status=healthy upstream=DefiLlama key=not set
 
 ## Phase-2 signing readiness (from `VERIFICATION.md` — this app signs nothing)
 
-- **EntryPoint** `0x0000000071727De22E5E9d8BAf0edAc6f37da032` is **deployed**
-  (~16 KB bytecode) → ERC-4337 is viable on Pharos.
-- **Bundler**: not found via probing — needs the official URL from docs.pharos.xyz.
-- **Smart-account factory**: not yet identified — locate via docs or by decoding a
-  smart-account-creation tx, then `eth_getCode` it.
+All account-abstraction predeploys below are **confirmed deployed on mainnet**
+(`npm run verify` checks them live):
+
+- **ERC-4337 EntryPoint v0.7** `0x0000…da032` and **v0.6** `0x5FF1…2789` — both deployed.
+- **SenderCreator v0.7 / v0.6** — both deployed.
+- **SafeSingletonFactory** `0x914d…43d7` and **CreateX** `0xba5E…ba5Ed` — both deployed.
+- **Bundler**: still **not found** (no public URL in the docs corpus) — Phase 2 must
+  self-host one or obtain it from the team.
 - **Tulipa write path**: deposits are signature-gated (`0x50921b23(amount,
   receiver, deadline, v, r, s)`) — Phase 2 needs the allowlisted signer.
-- **Recommendation**: until a bundler + session-key-capable factory are verified,
-  Phase 2 should default to a **scoped-wallet + policy** signing path; session-keys
-  become an option once those two are confirmed.
+- **Recommendation**: default Phase 2 to a **Safe scoped-wallet + policy** path
+  (deployable today via SafeSingletonFactory, no bundler required). ERC-4337 session
+  keys are viable once a bundler is sourced — the on-chain infra is already present.
+
+## Tests
+
+```bash
+npm test   # live integration tests against mainnet (no mocks)
+```
+
+9 checks assert real on-chain invariants that catch the classic failure modes
+(wrong network, wrong decimals, unscaled ray APY, wrong oracle base unit, broken
+source-labeling). They exercise the real modules — no mocked data is introduced.
 
 ---
 

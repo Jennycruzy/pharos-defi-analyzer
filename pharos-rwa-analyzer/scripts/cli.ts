@@ -12,7 +12,7 @@
  */
 
 import { ethers } from 'ethers';
-import { DEFAULT_ADDRESS, ENTRYPOINT_ADDRESS, LENDING_VENUES } from './config.js';
+import { AA_PREDEPLOYS, DEFAULT_ADDRESS, LENDING_VENUES } from './config.js';
 import { assertPharosNetwork, getProvider } from './rpc.js';
 import { collectWalletScan, type WalletScan } from './collect.js';
 import { analyzeEligibility } from './layers/eligibility.js';
@@ -160,13 +160,18 @@ async function runVerify(asJson: boolean): Promise<void> {
       venues.push({ product: v.product, error: err instanceof Error ? err.message : String(err) });
     }
   }
-  const epCode = await provider.getCode(ENTRYPOINT_ADDRESS);
+  const aa = await Promise.all(
+    AA_PREDEPLOYS.map(async (c) => {
+      const code = await provider.getCode(c.address);
+      return { name: c.name, address: c.address, deployed: code !== '0x', bytecodeBytes: (code.length - 2) / 2 };
+    }),
+  );
   const watch = await new PharosWatchClient().health();
 
   const result = {
     network: { chainId: net.chainId.toString(), blockNumber: net.blockNumber, isMainnet: net.isMainnet, rpc: net.rpcUrl },
     lendingVenues: venues,
-    entryPoint: { address: ENTRYPOINT_ADDRESS, deployed: epCode !== '0x', bytecodeBytes: (epCode.length - 2) / 2 },
+    aaPredeploys: aa,
     pharosWatch: { reachable: watch.reachable, status: watch.status, upstreamProvider: watch.upstreamProvider, keyConfigured: new PharosWatchClient().isConfigured() },
   };
 
@@ -181,7 +186,10 @@ async function runVerify(asJson: boolean): Promise<void> {
     if (v['error']) console.log(`${String(v['product']).padEnd(15)} : ERROR ${String(v['error'])}`);
     else console.log(`${String(v['product']).padEnd(15)} : oracle ${v['oracle']}  dataProvider ${v['dataProvider']}`);
   }
-  console.log(`EntryPoint      : ${result.entryPoint.deployed ? '✓ deployed' : '✗ MISSING'} (${result.entryPoint.bytecodeBytes} bytes) — Phase-2 prep`);
+  console.log('AA predeploys   : (Phase-2 prep — this app signs nothing)');
+  for (const c of aa) {
+    console.log(`  ${c.deployed ? '✓' : '✗'} ${c.name.padEnd(22)} ${String(c.bytecodeBytes).padStart(6)} bytes  ${c.address}`);
+  }
   console.log(`Pharos Watch    : health ${watch.reachable ? '✓' : '✗'} status=${watch.status ?? 'n/a'} upstream=${watch.upstreamProvider ?? 'n/a'} key=${result.pharosWatch.keyConfigured ? 'set' : 'not set'}`);
 }
 

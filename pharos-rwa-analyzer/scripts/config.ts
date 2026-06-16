@@ -74,8 +74,23 @@ export const PALPHA = {
   note: 'Gated institutional vault. No verified on-chain address for this wallet; benchmark only.',
 } as const;
 
-/** ERC-4337 EntryPoint — confirmed deployed; Phase-2 prep only (this app signs nothing). */
+/** ERC-4337 EntryPoint (v0.7) — confirmed deployed; Phase-2 prep only (this app signs nothing). */
 export const ENTRYPOINT_ADDRESS = '0x0000000071727De22E5E9d8BAf0edAc6f37da032';
+
+/**
+ * Account-abstraction predeploys from docs.pharos.xyz, ALL verified deployed on
+ * mainnet (eth_getCode). Phase-2 reference only — the analyzer never signs.
+ * A public bundler URL is still not published; the scoped-wallet (Safe) path is
+ * deployable today via SafeSingletonFactory.
+ */
+export const AA_PREDEPLOYS = [
+  { name: 'EntryPoint v0.7', address: '0x0000000071727De22E5E9d8BAf0edAc6f37da032' },
+  { name: 'EntryPoint v0.6', address: '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789' },
+  { name: 'SenderCreator v0.7', address: '0xEFC2c1444eBCC4Db75e7613d20C6a62fF67A167C' },
+  { name: 'SenderCreator v0.6', address: '0x7fc98430eAEdbb6070B35B39D798725049088348' },
+  { name: 'SafeSingletonFactory', address: '0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7' },
+  { name: 'CreateX', address: '0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed' },
+] as const;
 
 /** Pharos Watch NAV/depeg API. Data routes require X-API-Key; /api/health is exempt. */
 export const PHAROS_WATCH = {

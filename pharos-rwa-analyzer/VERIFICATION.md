@@ -156,17 +156,32 @@ never deposits.
 
 ## Phase-2 signing readiness (record only — this analyzer signs NOTHING)
 
+The canonical predeploy table from `docs.pharos.xyz/llms-full.txt` was cross-checked
+with `eth_getCode` on mainnet. **All six are deployed** (run `npm run verify`):
+
+| Contract | Address | Bytecode | Status |
+| --- | --- | --- | --- |
+| ERC-4337 EntryPoint v0.7 | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` | 16,035 B | ✅ deployed |
+| ERC-4337 EntryPoint v0.6 | `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` | 23,689 B | ✅ deployed |
+| SenderCreator v0.7 | `0xEFC2c1444eBCC4Db75e7613d20C6a62fF67A167C` | 451 B | ✅ deployed |
+| SenderCreator v0.6 | `0x7fc98430eAEdbb6070B35B39D798725049088348` | 528 B | ✅ deployed |
+| SafeSingletonFactory | `0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7` | 69 B | ✅ deployed |
+| CreateX | `0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed` | 11,838 B | ✅ deployed |
+
 | Probe | Result |
 | --- | --- |
-| **EntryPoint** `0x0000000071727De22E5E9d8BAf0edAc6f37da032` | `eth_getCode` returns **32,072 hex chars ≈ 16 KB bytecode** — **deployed & confirmed** ✅ (ERC-4337 v0.7 EntryPoint) |
-| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler (RPC error). Guessed hosts (`bundler.pharos.xyz`, etc.) did not respond. **NOT FOUND via probing — needs the official bundler URL from docs.pharos.xyz.** |
-| **Smart-account factory** | No verified factory address yet. **TODO Phase 2:** locate via docs or decode a smart-account-creation tx, then `eth_getCode` it. |
+| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler. Guessed hosts and the docs corpus contain **no public bundler URL**. **STILL NOT FOUND** — Phase 2 must run its own bundler or obtain one from the team. |
 | **Tulipa write path** | Signature-gated deposit `0x50921b23(amount,receiver,deadline,v,r,s)` — Phase-2 deposits need the allowlisted signer. |
 
-**Phase-2 decision input:** EntryPoint is live, so ERC-4337 is viable. Because a
-bundler + session-key-capable factory are **not yet confirmed**, the safe default
-for Phase 2 is the **scoped-wallet + policy** path until a bundler URL and a
-session-key factory are verified from docs; then session-keys become an option.
+**Phase-2 decision input (sharpened):**
+- ERC-4337 is **fully viable** — both v0.6 and v0.7 EntryPoints + SenderCreators are live.
+- A **Safe-based scoped wallet is deployable today** via the deployed
+  `SafeSingletonFactory` (deterministic), and `CreateX` is available for
+  CREATE2/CREATE3 deployments.
+- The **only missing piece for the session-key/4337 path is a public bundler URL.**
+- **Recommendation:** default Phase 2 to the **Safe scoped-wallet + policy** path
+  (deployable now, no bundler needed). Switch to ERC-4337 session keys once a
+  bundler is sourced; the on-chain infra for it is already confirmed present.
 
 ---
 

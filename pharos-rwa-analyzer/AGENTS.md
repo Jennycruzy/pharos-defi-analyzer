@@ -34,7 +34,8 @@ file orients any coding agent working in this repo.
 
 ```bash
 npm run typecheck                 # strict tsc, must be clean
-npm run verify                    # live Step-0 checks
+npm test                          # LIVE integration tests (no mocks) — 9 invariant checks
+npm run verify                    # live Step-0 checks (incl. AA predeploys)
 npm run analyze -- report         # full live report, default owner wallet
 npm run analyze -- report --json  # structured output (Phase-2 bridge)
 ```
@@ -74,13 +75,19 @@ the deliberate degradations — fix or confirm before relying on them:
   faked). Add it as `[static]` only once a published date is confirmed.
 - **pAlpha has no verified on-chain address** for this wallet — it is a `[static]`
   benchmark only, never read on-chain. Add reads only if a real address is verified.
-- **Phase-2 signing prerequisites unconfirmed:** EntryPoint is deployed, but the
-  **bundler URL** and a **smart-account factory** are not yet identified (RPC/host
-  probing failed; docs.pharos.xyz root has no AA section — query its GitBook deeper).
-  See `VERIFICATION.md` → "Phase-2 signing readiness".
-- **No automated test suite.** Verification today is live (`npm run verify`) plus
-  `npm run typecheck`. A recorded-fixture or mainnet-fork test harness is a TODO
-  (must not introduce mocks into the analyzer's own output path).
+- ✅ **MOSTLY RESOLVED — Phase-2 AA infra confirmed.** The docs predeploy table was
+  cross-checked on-chain: **EntryPoint v0.6 + v0.7, both SenderCreators,
+  SafeSingletonFactory, and CreateX are all deployed** (see `config.ts` `AA_PREDEPLOYS`,
+  checked by `npm run verify` and the test suite). A **Safe scoped-wallet path is
+  deployable today**; ERC-4337 session keys are viable too. The **only remaining gap
+  is a public bundler URL** — not in the docs corpus; Phase 2 must self-host or obtain
+  one. Smart-account factory is no longer a blocker (SafeSingletonFactory/CreateX).
+- ✅ **RESOLVED — automated test suite added.** `tests/live.test.ts` (run `npm test`)
+  is a LIVE integration suite (no mocks) asserting invariants that catch the classic
+  bugs: chain 1672, USDC decimals=6, ray-scaled APY < 100% (the "4,000,000%" guard),
+  oracle USDC near $1 (base-unit guard), Tulipa ERC-4626/asset, on-chain incentive
+  reads, all AA predeploys deployed, and the source-label honesty invariant. 9 tests,
+  all passing. It exercises the real modules — it does not introduce mocks.
 
 ## Commit conventions
 

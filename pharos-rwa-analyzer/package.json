@@ -8,6 +8,7 @@
     "analyze": "tsx scripts/cli.ts",
     "verify": "tsx scripts/cli.ts verify",
     "report": "tsx scripts/cli.ts report",
+    "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
