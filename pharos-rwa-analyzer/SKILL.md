@@ -85,6 +85,5 @@ Funding/key rule:
 - **Guard rails.** Spend caps, health-factor floors, AA infrastructure checks,
   SafeOp digest cross-checks, and live simulation run before broadcast.
 
-See `VERIFICATION.md` (live findings + Phase-2 signing readiness), `README.md`
-(setup, confirmed-vs-degraded table, real examples), and `NON_TECHNICAL_SUMMARY.md`
-(plain-English owner guide).
+See `VERIFICATION.md` for live findings and actuator readiness, and `README.md`
+for setup, confirmed-vs-degraded behavior, and examples.

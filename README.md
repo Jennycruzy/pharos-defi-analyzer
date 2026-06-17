@@ -16,13 +16,13 @@ Every number it prints comes from a **real live read** of Pharos mainnet or the
 real Pharos Watch API. There are **no mocks, no fakes, no example numbers.** Each
 value is tagged with its source: `[on-chain]`, `[api]`, or `[static]`.
 
-Use it three ways — a **CLI**, an **MCP server** for other agents, and an importable
+Use it three ways — a **CLI**, an **MCP server**, and an importable
 **TypeScript library** — and every report carries a **replayable proof** (pinned
 block + hash + the exact reads performed) so anyone can reproduce it.
 
 > **Project layout.** The app lives in [`pharos-rwa-analyzer/`](./pharos-rwa-analyzer/).
 > Every `npm …` command and every `scripts/…`, `tests/…`, and sibling-doc path below
-> (e.g. `VERIFICATION.md`, `AGENTS.md`, `NON_TECHNICAL_SUMMARY.md`) is **relative to
+> (e.g. `VERIFICATION.md`, `SKILL.md`) is **relative to
 > that directory** — the Setup block `cd`s into it first. The CI workflow
 > (`.github/workflows/ci.yml`) is at the repo root.
 
@@ -171,10 +171,10 @@ If self-bundling, the owner EOA also needs native gas for `handleOps`.
 
 ---
 
-## Use it as an MCP server (for agents)
+## Use it as an MCP server
 
-This skill ships a **Model Context Protocol** server so any MCP-capable agent
-(Claude Desktop, IDE assistants, custom agents) can call it **in natural language**.
+This skill ships a **Model Context Protocol** server so any MCP-capable client can
+call the same read and actuator surfaces over stdio.
 Read tools return the exact same structured JSON as the CLI (shared via
 `scripts/api.ts`, so they can never drift). The `pharos_act` tool is the explicit
 write surface: dry-run needs no key, while simulate/execute read
@@ -186,8 +186,7 @@ write surface: dry-run needs no key, while simulate/execute read
 npm run mcp          # stdio transport; logs "MCP server ready" to stderr
 ```
 
-**Register it** with an MCP client. Example `claude_desktop_config.json` (or any
-client's `mcpServers` block):
+**Register it** with an MCP client using its `mcpServers` configuration:
 
 ```jsonc
 {
@@ -212,12 +211,12 @@ client's `mcpServers` block):
 | `pharos_analyze_layer` | One layer only | `layer` (`eligibility`/`maturity`/`trueyield`/`risk`/`nav`/`diff`), `address?`, `allowTestnet?` |
 | `pharos_verify` | Live infra health (chain id, venue oracles, AA predeploys, Watch) | `allowTestnet?` |
 | `pharos_snapshot` | Save a snapshot so a later `diff` has a baseline (writes local JSON only) | `address?`, `allowTestnet?` |
+| `pharos_act` | Plan, simulate, or execute guarded Safe/ERC-4337 actions | `mode?`, `kind`, `owner?`, `product?`, `asset?`, `amount?`, guard flags |
 
 `address` defaults to the configured wallet; everything is mainnet (1672) unless
-`allowTestnet` is set. See **`AGENTS.md`** for the natural-language usage guide an
-agent should read (what to say, how to interpret the source labels and `null`s).
+`allowTestnet` is set.
 
-**Natural-language → tool, examples an agent will map automatically:**
+**Example requests and matching tools:**
 - "Give me a full position report for 0xABC on Pharos" → `pharos_report { address: "0xABC" }`
 - "What's the real yield on this wallet?" → `pharos_analyze_layer { layer: "trueyield" }`
 - "Is anything depegged right now?" → `pharos_analyze_layer { layer: "nav" }`

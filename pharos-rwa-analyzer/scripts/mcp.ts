@@ -1,12 +1,11 @@
 #!/usr/bin/env -S npx tsx
 /**
  * mcp.ts — Model Context Protocol server exposing the Pharos RWA Analyzer as
- * tools any MCP-capable agent (Claude Desktop, IDE assistants, custom agents) can
- * call in natural language.
+ * tools any MCP-capable client can call over stdio.
  *
- * Transport: stdio. Tools are READ-ONLY — they collect a live Pharos mainnet scan
- * and return the same structured, source-labeled JSON the CLI emits (shared via
- * api.ts, so MCP and CLI never drift). The server signs nothing and holds no key.
+ * Transport: stdio. Read tools collect a live Pharos mainnet scan and return the
+ * same structured, source-labeled JSON the CLI emits. The explicit actuator tool
+ * signs only when mode=simulate or mode=execute and PHAROS_SIGNER_KEY is local.
  *
  * Run:  npm run mcp     (or:  npx tsx scripts/mcp.ts)
  */
