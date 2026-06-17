@@ -68,4 +68,78 @@ export const ERC20_ABI = [
   'function symbol() view returns (string)',
   'function name() view returns (string)',
   'function balanceOf(address owner) view returns (uint256)',
+  // --- write (actuator skill) ---
+  'function approve(address spender, uint256 amount) returns (bool)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+] as const;
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * WRITE-SIDE ABIs — used ONLY by the actuator skill (scripts/aa, actions, plan).
+ * These are the exact mutating fragments the smart account will execute. They are
+ * kept separate from the read ABIs above so the read-only analyzer never imports
+ * a state-changing selector by accident. Every fragment is the canonical Aave v3
+ * / ERC-4626 / ERC-4337 v0.7 / Safe v1.4.1 signature.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Aave-style Pool — mutating methods the actuator drives via the smart account. */
+export const POOL_WRITE_ABI = [
+  'function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)',
+  'function withdraw(address asset, uint256 amount, address to) returns (uint256)',
+  'function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf)',
+  'function repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf) returns (uint256)',
+  'function setUserUseReserveAsCollateral(address asset, bool useAsCollateral)',
+] as const;
+
+/** ERC-4626 vault — mutating methods (deposit is intentionally omitted: gated). */
+export const ERC4626_WRITE_ABI = [
+  'function redeem(uint256 shares, address receiver, address owner) returns (uint256)',
+  'function withdraw(uint256 assets, address receiver, address owner) returns (uint256)',
+] as const;
+
+/**
+ * ERC-4337 EntryPoint v0.7. `PackedUserOperation` is the v0.7 packed struct
+ * (accountGasLimits / gasFees are two uint128 packed into a bytes32 each).
+ */
+export const ENTRYPOINT_V07_ABI = [
+  'function getNonce(address sender, uint192 key) view returns (uint256)',
+  'function getUserOpHash(tuple(address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature) userOp) view returns (bytes32)',
+  'function handleOps(tuple(address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature)[] ops, address beneficiary)',
+  'function balanceOf(address account) view returns (uint256)',
+  'function depositTo(address account) payable',
+] as const;
+
+/** Safe v1.4.1 ProxyFactory — deterministic CREATE2 deployment of the smart account. */
+export const SAFE_PROXY_FACTORY_ABI = [
+  'function createProxyWithNonce(address singleton, bytes initializer, uint256 saltNonce) returns (address proxy)',
+  'function proxyCreationCode() view returns (bytes)',
+] as const;
+
+/** Safe v1.4.1 singleton — setup() initializer + read helpers for verification. */
+export const SAFE_ABI = [
+  'function setup(address[] _owners, uint256 _threshold, address to, bytes data, address fallbackHandler, address paymentToken, uint256 payment, address paymentReceiver)',
+  'function isModuleEnabled(address module) view returns (bool)',
+  'function getOwners() view returns (address[])',
+  'function getThreshold() view returns (uint256)',
+  'function VERSION() view returns (string)',
+] as const;
+
+/** SafeModuleSetup — delegatecalled during setup() to enable the 4337 module. */
+export const SAFE_MODULE_SETUP_ABI = [
+  'function enableModules(address[] modules)',
+] as const;
+
+/**
+ * Safe4337Module v0.3.0 (EntryPoint v0.7). Registered as BOTH the Safe's fallback
+ * handler (routes validateUserOp/executeUserOp) AND an enabled module (so it may
+ * call execTransactionFromModule). `getOperationHash` lets us cross-check our
+ * locally-computed SafeOp EIP-712 digest against the on-chain module before signing.
+ */
+export const SAFE_4337_MODULE_ABI = [
+  'function executeUserOp(address to, uint256 value, bytes data, uint8 operation)',
+  'function getOperationHash(tuple(address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature) userOp) view returns (bytes32)',
+] as const;
+
+/** MultiSendCallOnly v1.4.1 — batch multiple CALLs atomically (reverts on delegatecall). */
+export const MULTISEND_CALL_ONLY_ABI = [
+  'function multiSend(bytes transactions) payable',
 ] as const;

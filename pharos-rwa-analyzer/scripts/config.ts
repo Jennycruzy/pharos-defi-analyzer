@@ -134,3 +134,62 @@ export const THRESHOLDS = {
 
 export const RAY = 10n ** 27n; // Aave fixed-point base for interest rates
 export const USD_BASE = 10n ** 8n; // Aave oracle base currency unit (verified 1e8)
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * ACTUATOR (write skill) — Account-Abstraction stack.
+ *
+ * The write skill never signs a raw EOA transaction against a protocol. Instead
+ * the provided key OWNS an ERC-4337 smart account (a Safe + Safe4337Module) and
+ * only SIGNS UserOperations; the Safe holds the funds and executes the calls.
+ * This is the security posture CertiK's Skill Scanner rewards: scoped authority,
+ * no raw protocol access from the key, batched/atomic actions.
+ *
+ * The Safe contract addresses below are the CANONICAL deterministic deployments
+ * (Safe v1.4.1 + safe-modules/4337 v0.3.0), identical on every chain that used
+ * the Safe Singleton Factory. We NEVER trust them blindly: `aa/safe.ts` verifies
+ * each via eth_getCode at runtime and refuses to act if any is missing on Pharos
+ * (same "never assume; verify" rule the read side follows).
+ * ──────────────────────────────────────────────────────────────────────────── */
+export const AA = {
+  /** ERC-4337 EntryPoint v0.7 (same constant as ENTRYPOINT_ADDRESS; verified deployed). */
+  entryPoint: ENTRYPOINT_ADDRESS,
+  /** Canonical Safe v1.4.1 + 4337-module v0.3.0 addresses (CREATE2-deterministic). */
+  safe: {
+    proxyFactory: '0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67',
+    /** Safe L2 singleton (emits events for indexers — preferred on an L2 like Pharos). */
+    singleton: '0x29fcB43b46531BcA003ddC8FCB67FFE91900C762',
+    /** Safe4337Module v0.3.0 — used as BOTH fallback handler and enabled module. */
+    module4337: '0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226',
+    /** SafeModuleSetup v0.3.0 — delegatecalled in setup() to enable the module. */
+    moduleSetup: '0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47',
+    /** MultiSendCallOnly v1.4.1 — atomic batching of CALL-only meta-transactions. */
+    multiSendCallOnly: '0x9641d764fc13c8B624c04430C7356C1C7C8102e2',
+  },
+  /** Deterministic salt for the owner's primary Safe. Override to derive a second account. */
+  saltNonce: BigInt(process.env.PHAROS_SAFE_SALT?.trim() || '0'),
+  /**
+   * Optional ERC-4337 bundler RPC. If set, UserOps go via eth_sendUserOperation.
+   * Pharos has no published public bundler yet, so the DEFAULT transport self-bundles
+   * by calling EntryPoint.handleOps() directly from the signer EOA.
+   */
+  bundlerUrl: process.env.PHAROS_BUNDLER_URL?.trim() || '',
+} as const;
+
+/**
+ * Hard safety rails for every write. These are refusals, not warnings — an action
+ * that would breach them is never built/signed. CLI flags can TIGHTEN but the
+ * health-factor floor can never be loosened below the absolute floor.
+ */
+export const WRITE_GUARDS = {
+  /** Never let an action leave a borrow position with health factor below this. */
+  minHealthFactorFloor: Number(process.env.MIN_HEALTH_FACTOR?.trim() || '1.5'),
+  /** Absolute floor the CLI cannot go under, even if asked. */
+  absoluteHealthFactorFloor: 1.2,
+  /** Default per-action spend cap (USD). Override with --max-spend. */
+  maxSpendUsdPerAction: Number(process.env.MAX_SPEND_USD?.trim() || '1000'),
+  /** Minimum net-APY improvement (percentage points) before a rebalance is worth it. */
+  minYieldGainPct: 0.1,
+} as const;
+
+/** Env var holding the signer private key. NEVER pass a key as a CLI argument. */
+export const SIGNER_KEY_ENV = 'PHAROS_SIGNER_KEY';

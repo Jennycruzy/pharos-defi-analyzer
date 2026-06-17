@@ -1,4 +1,4 @@
-# Pharos RWA Position Analyzer (Phase 1)
+# Pharos RWA Position Analyzer
 
 A **read-only** skill that gives a wallet a complete, honest picture of its DeFi
 + real-world-asset (RWA) positions on **Pharos mainnet (chain 1672)**. It answers
