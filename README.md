@@ -42,7 +42,7 @@ block + hash + the exact reads performed) so anyone can reproduce it.
 - [Real example output](#real-example-output-default-owner-wallet-live-mainnet)
 - [Output for agents (`--json` shape)](#output-for-agents---json-shape)
 - [Confirmed vs Degraded](#confirmed-vs-degraded-per-layer)
-- [Actuator readiness](#actuator-readiness-from-verificationmd)
+- [Actuator (Safe + ERC-4337 write skill)](#actuator-safe--erc-4337-write-skill)
 - [Tests](#tests)
 - [Continuous integration](#continuous-integration)
 - [Architecture](#architecture)
@@ -68,10 +68,15 @@ block + hash + the exact reads performed) so anyone can reproduce it.
 - **Reusable by agents** — ships an **MCP server** (read tools, `pharos_act`, a
   snapshot **resource**, and an `explain_wallet` **prompt**) and an importable
   **library API**.
-- **Guarded actuator** — dry-run Safe/ERC-4337 plans need no key; simulation and
-  execution require `PHAROS_SIGNER_KEY`, spend caps, health-factor floors, SafeOp
-  digest checks, and live UserOperation simulation before broadcast.
-- **Guarded** — 23 tests (live + a **golden-snapshot** regression + pure-logic),
+- **Guarded actuator, proven live** — dry-run Safe/ERC-4337 plans need no key;
+  simulation and execution require `PHAROS_SIGNER_KEY`, spend caps, health-factor
+  floors, SafeOp digest cross-checks, and live UserOperation simulation before
+  broadcast. A real supply has been signed → simulated → executed on mainnet.
+- **Self-provisioning AA infra** — the missing Safe modules are deployable to
+  their exact canonical addresses via `npm run deploy:modules` (deterministic
+  CREATE2, official byte-verified v0.3.0 code), so the actuator never depends on
+  guessed cross-chain addresses.
+- **Guarded** — 25 tests (live + a **golden-snapshot** regression + pure-logic),
   strict TypeScript, and CI on every push/PR.
 - **Explicit writes only** — analysis remains read-only; write actions are only
   built through `act` / `pharos_act` and only broadcast with `--execute`.
@@ -139,8 +144,13 @@ No keys are required for read reports. Optional `.env` settings:
 - `DEFAULT_ADDRESS` — the wallet to analyze when `--address` isn't given.
 - `PHAROS_SIGNER_KEY` — owner EOA key for `act --simulate` / `act --execute`
   only. Never pass this key as a CLI argument or chat message.
+- `PHAROS_DEPLOYER_KEY` — funded key for the one-time `npm run deploy:modules
+  --execute` (deploys the Safe modules). Kept separate from the signer key so the
+  privileged deploy is always deliberate. Not needed for the dry run.
 - `PHAROS_BUNDLER_URL` — optional ERC-4337 bundler; empty means self-bundle
   through `EntryPoint.handleOps`.
+- `PHAROS_SAFE_SALT` — optional salt to derive a second Safe (default `0` = the
+  primary account).
 
 ---
 
@@ -156,8 +166,17 @@ npm run analyze -- trueyield --address 0xABC…    # one layer, a specific walle
 npm run analyze -- report --json                 # machine-readable read report
 npm run verify                                   # re-run Step-0 live verification
 npm run act -- rebalance --owner 0xABC…          # dry-run plan, no key needed
-npm run act -- repay --owner 0xABC… --product OpenFi --asset USDC --amount all --simulate
+npm run act -- supply --product OpenFi --asset USDC --amount 0.1 --simulate   # sign + simulate
+npm run act -- supply --product OpenFi --asset USDC --amount 0.1 --execute    # sign + broadcast
+npm run deploy:modules                           # one-time: check/deploy Safe modules
 ```
+
+**Action lifecycle.** `dry-run` (default) builds the Safe plan + UserOp and prints
+the derived Safe address — no key, no signing. `--simulate` signs the `SafeOp`,
+cross-checks its digest against the on-chain module, and runs the full
+`handleOps` through `eth_estimateGas` (real validation + execution against live
+state) — refusing to go further if it would revert. `--execute` broadcasts. The
+Safe deploys itself on its first UserOp via `initCode`.
 
 Flags: `--address` (defaults to the verified owner wallet), `--json` (structured
 output), `--allow-testnet` (permit chain 688688; **mainnet is the default and the
@@ -420,31 +439,64 @@ block-bound, so they're excluded from the deterministic guarantee.)
 
 ---
 
-## Actuator readiness (from `VERIFICATION.md`)
+## Actuator (Safe + ERC-4337 write skill)
 
-All account-abstraction predeploys below are **confirmed deployed on mainnet**
-(`npm run verify` checks them live):
+The write path is **live and proven end-to-end on Pharos mainnet** (see
+`VERIFICATION.md` §G). The owner key only ever signs an EIP-712 `SafeOp`; a Safe
+smart account holds the funds and executes the protocol calls.
 
-- **ERC-4337 EntryPoint v0.7** `0x0000…da032` and **v0.6** `0x5FF1…2789` — both deployed.
-- **SenderCreator v0.7 / v0.6** — both deployed.
-- **SafeSingletonFactory** `0x914d…43d7` and **CreateX** `0xba5E…ba5Ed` — both deployed.
-- **Bundler**: still **not found** (no public URL in the docs corpus). The
-  actuator can use `PHAROS_BUNDLER_URL` when one exists; otherwise it self-bundles
-  through `EntryPoint.handleOps`.
-- **Safe4337 module stack**: dry-run on June 17, 2026 found `Safe4337Module`
-  `0x75cf…c226` and `SafeModuleSetup` `0x2dd6…5b47` missing on the connected
-  Pharos RPC. Planning works, but simulation/execution are intentionally blocked
-  until those module contracts are deployed, replaced with Pharos-deployed
-  equivalents, or the actuator switches to the Safe Transaction Service path.
-- **Signing rails (from the docs):** **Safe** is officially supported — UI
-  `app.safe.global` + Transaction Service `transaction.safe.pharosnetwork.xyz`;
-  **Fordefi** (MPC) is available; and Pharos ships an **agent toolkit** that signs via
-  Foundry `--private-key` behind a mandatory 4-check pre-check.
+**AA infrastructure — all six required contracts now present on mainnet**
+(`npm run verify` and `npm run deploy:modules` both check `eth_getCode` live):
+
+| Contract | Address | Status |
+| --- | --- | --- |
+| ERC-4337 EntryPoint v0.7 | `0x0000…da032` | ✅ predeployed |
+| SafeProxyFactory v1.4.1 | `0x4e1D…ec67` | ✅ predeployed |
+| Safe L2 singleton v1.4.1 | `0x29fc…C762` | ✅ predeployed |
+| MultiSendCallOnly v1.4.1 | `0x9641…02e2` | ✅ predeployed |
+| **Safe4337Module v0.3.0** | `0x75cf…c226` | ✅ **deployed by this repo** (tx `0x54e6…29be`) |
+| **SafeModuleSetup v0.3.0** | `0x2dd6…5b47` | ✅ **deployed by this repo** (tx `0x5ea9…b058`) |
+
+The two Safe modules were missing on Pharos. Rather than invent new addresses,
+`npm run deploy:modules` redeploys the **official audited v0.3.0 creation code**
+(byte-verified against the canonical Ethereum-mainnet deployment) through the
+**Arachnid Deterministic Deployment Proxy** (`0x4e59…4956C`, present on Pharos)
+with a zero salt — so they land at the **exact canonical addresses** with **no
+config change**. The script re-asserts `CREATE2 == canonical == configured` and
+refuses on any mismatch (see [Deploying the Safe modules](#deploying-the-safe-modules-one-time)).
+
+**Proven action.** A real `supply` of 0.1 USDC to OpenFi was signed, simulated,
+and executed: the Safe deployed on first use and now holds the OpenFi receipt
+token (UserOp tx `0xb92e…abcea`). The signer's local `SafeOp` digest was
+cross-checked against the deployed module's on-chain `getOperationHash` before
+broadcast.
+
+- **Bundler**: no public Pharos bundler URL is published, so the default transport
+  **self-bundles** through `EntryPoint.handleOps` from the signer EOA. Set
+  `PHAROS_BUNDLER_URL` to route via a standards bundler (`eth_sendUserOperation`)
+  if/when one exists.
+- **Guards (refusals, not warnings)**: per-action USD spend cap (`--max-spend`),
+  a health-factor floor that the CLI can tighten but never loosen below the
+  absolute floor, and a minimum net-APY gain before a rebalance is worth it.
 - **Tulipa write path**: deposits are signature-gated (`0x50921b23(amount,
   receiver, deadline, v, r, s)`), so the actuator refuses vault deposits and only
   supports standard ERC-4626 redeem/withdraw paths.
-- **Default path**: Safe scoped wallet + ERC-4337 UserOperation, with direct
-  `handleOps` self-bundling when no public bundler is configured.
+- **Other signing rails documented by Pharos** (alternatives, not used by default):
+  **Safe** UI `app.safe.global` + Transaction Service
+  `transaction.safe.pharosnetwork.xyz`; **Fordefi** (MPC); and a Pharos **agent
+  toolkit** that signs via Foundry `--private-key` behind a mandatory 4-check
+  pre-check.
+
+### Deploying the Safe modules (one-time)
+
+```bash
+npm run deploy:modules                 # DRY RUN — no key; prints predicted vs canonical
+PHAROS_DEPLOYER_KEY=0x… npm run deploy:modules -- --execute   # broadcast (needs native gas)
+```
+
+Idempotent (skips anything already on-chain) and re-verifies `eth_getCode` after
+each deploy. On Pharos mainnet both modules are already deployed, so the dry run
+now reports "All modules already present — nothing to do."
 
 ## Tests
 
@@ -452,21 +504,22 @@ All account-abstraction predeploys below are **confirmed deployed on mainnet**
 npm test   # live integration tests against mainnet (no mocks)
 ```
 
-23 checks total. The **live** checks assert real on-chain invariants that catch
-the classic failure modes (wrong network, wrong decimals, unscaled ray APY, wrong
-oracle base unit, broken source-labeling, withdrawable-exceeds-liquidity), plus the
-shared `api.getReport`/`getLayer` shape the MCP server serves. A **golden-snapshot**
-test (`tests/golden.test.ts`) pins a fixed historical block and asserts the report
-still matches a committed JSON (modulo wall-clock + live `[api]`) — catching silent
-numeric drift that ordinary live tests miss. The **pure-logic** checks
-(`tests/unit.test.ts`) verify the diff engine and the per-collateral liquidation math
-with hand-built inputs — needed because the demo wallet carries no debt, so the
-liquidation path can't be triggered live. A key-gated test exercises the Pharos Watch
-`[api]` branch when `PHAROS_WATCH_API_KEY` is set, and self-skips (never fakes) when
-it isn't. No mocked chain data anywhere.
+25 checks total. The **live** checks (`tests/live.test.ts`) assert real on-chain
+invariants that catch the classic failure modes (wrong network, wrong decimals,
+unscaled ray APY, wrong oracle base unit, broken source-labeling,
+withdrawable-exceeds-liquidity), plus the shared `api.getReport`/`getLayer` shape
+the MCP server serves. A **golden-snapshot** test (`tests/golden.test.ts`) pins a
+fixed historical block and asserts the report still matches a committed JSON
+(modulo wall-clock + live `[api]`) — catching silent numeric drift that ordinary
+live tests miss. The **pure-logic** checks (`tests/unit.test.ts`) verify the diff
+engine, the per-collateral liquidation math, and the rebalance selector with
+hand-built inputs — needed because the demo wallet carries no debt, so the
+liquidation path can't be triggered live. A key-gated test exercises the Pharos
+Watch `[api]` branch when `PHAROS_WATCH_API_KEY` is set, and self-skips (never
+fakes) when it isn't. No mocked chain data anywhere.
 
 ```bash
-npm test              # all 23 checks (live + golden + pure-logic)
+npm test              # all 25 checks (live + golden + pure-logic)
 npm run golden:gen    # regenerate the golden after an intentional shape change
 ```
 
@@ -507,14 +560,23 @@ pharos-rwa-analyzer/scripts/
   prices.ts      Aave oracle getAssetPrice reader (8-decimal, base-unit checked)
   lending.ts     OpenFi + ZonaLend reserve/user reads (per-venue adapters)
   vault.ts       Tulipa ERC-4626 reads (share price, redemption limits)
+  incentives.ts  on-chain RewardsController check (verifies advertised incentives)
   pharoswatch.ts Pharos Watch API client (key-gated, degrades gracefully)
   snapshot.ts    local JSON snapshots for diff
   collect.ts     one-pass collector feeding all layers (one pinned block)
   types.ts       Sourced<T> — structural enforcement of source labeling
   layers/        eligibility · maturity · trueyield · risk · nav · diff
   api.ts         programmatic API — one source of truth for the report shape
-  cli.ts         CLI commands + --json + --address (uses api.ts)
+  cli.ts         CLI commands + --json + --address + act (uses api.ts)
   mcp.ts         Model Context Protocol server for agents (uses api.ts)
+  ── actuator (write skill; analysis stays read-only) ──
+  plan.ts        intent → guarded plan (spend caps, health-factor floor, rebalance)
+  actions.ts     per-intent meta-transaction builders (approve/supply/withdraw/…)
+  act.ts         shared runner for CLI + MCP (dry-run / simulate / execute)
+  aa/safe.ts     Safe v1.4.1 account: address derivation, initCode, infra check
+  aa/userop.ts   ERC-4337 v0.7 UserOp build/sign/simulate/send (+ digest cross-check)
+  aa/deploy-modules.ts   one-time deterministic deploy of the Safe4337 modules
+  aa/artifacts/  byte-verified Safe module creation code + provenance (committed)
 ```
 
 **Consistency & performance.** Every read in a run is batched through Multicall3

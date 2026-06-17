@@ -1,9 +1,11 @@
-niremo# VERIFICATION.md — Step 0 Live-Mainnet Results
+# VERIFICATION.md — Step 0 Live-Mainnet Results
 
 Every line below was confirmed against **live Pharos mainnet (chain 1672)** and
-the real Pharos Watch API on **2026-06-16**. Nothing here is assumed. Where a
-thing could not be confirmed, it is marked **DEGRADE** and the analyzer omits or
-clearly labels it rather than guessing. Re-run `npm run verify` to reproduce.
+the real Pharos Watch API. The read-layer evidence (§A–§F) was confirmed on
+**2026-06-16**; the actuator evidence (§G) on **2026-06-17**. Nothing here is
+assumed. Where a thing could not be confirmed, it is marked **DEGRADE** and the
+analyzer omits or clearly labels it rather than guessing. Re-run `npm run verify`
+(reads) and `npm run deploy:modules` (AA infra) to reproduce.
 
 ---
 
@@ -169,7 +171,7 @@ errors retry with backoff; genuine reverts are never swallowed.
 
 ---
 
-## Actuator readiness
+## Actuator readiness (AA predeploys)
 
 The canonical Pharos AA predeploy table from `docs.pharos.xyz/llms-full.txt` was
 cross-checked with `eth_getCode` on mainnet. **All six are deployed** (run
@@ -187,35 +189,92 @@ cross-checked with `eth_getCode` on mainnet. **All six are deployed** (run
 | Probe | Result |
 | --- | --- |
 | **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler. The docs corpus (`docs.pharos.xyz/llms-full.txt`) contains **no public bundler URL**. The actuator supports `PHAROS_BUNDLER_URL` when one exists and otherwise self-bundles through `EntryPoint.handleOps`. |
-| **Safe4337 module contracts** | Dry-run on 2026-06-17 found `Safe4337Module` `0x75cf…c226` and `SafeModuleSetup` `0x2dd6…5b47` **not deployed** on the connected Pharos RPC. `SafeProxyFactory`, Safe L2 singleton, EntryPoint v0.7, and MultiSendCallOnly are deployed. Dry-run planning works; simulation/execution are blocked until these module addresses are deployed, replaced with Pharos-deployed equivalents, or the actuator switches to a non-4337 Safe transaction path. |
 | **Tulipa write path** | Signature-gated deposit `0x50921b23(amount,receiver,deadline,v,r,s)` — the actuator refuses vault deposits and only supports standard ERC-4626 redeem/withdraw paths. |
 
 ### Signing rails found in the Pharos docs (the "agent center" search)
 - **Safe (Gnosis Safe) is officially supported** — the recommended scoped-wallet path:
-  - Safe UI: `https://app.safe.global`
-  - **Safe Transaction Service API: `https://transaction.safe.pharosnetwork.xyz`**
-    (create/submit txs, collect signatures, monitor status, automation hooks).
-  - Combined with the on-chain-verified **SafeSingletonFactory** (`0x914d…43d7`), a
-    Safe scoped wallet is deployable and operable **today, with no bundler**.
-  - ⚠️ The Tx Service host did **not resolve from this sandbox** (curl status 000 —
-    DNS-restricted environment, not necessarily down). Confirm reachability from a
-    normal network before relying on it.
-- **Fordefi** — institutional **MPC** wallet infra with policy-based access control;
-  an alternative scoped/policy signer for Phase 2.
-- **Pharos "agent" toolkit** (the agent-center pattern): a `SKILL.md`-driven agent
-  that signs via **Foundry `cast`/`forge --private-key`**, reads `assets/networks.json`
-  for RPC/chain, and enforces a mandatory **4-check pre-check** before any write
-  (private key, address, network, balance). This is the official blueprint for the
-  scoped-key + policy agent.
+  Safe UI `https://app.safe.global`, Transaction Service API
+  `https://transaction.safe.pharosnetwork.xyz`. (The Tx Service host did not resolve
+  from this sandbox — DNS-restricted environment; confirm from a normal network.)
+- **Fordefi** — institutional **MPC** wallet infra; an alternative policy signer.
+- **Pharos "agent" toolkit** — a `SKILL.md`-driven agent that signs via Foundry
+  `--private-key` behind a mandatory 4-check pre-check.
 
-**Actuator decision input:**
-- ERC-4337 EntryPoint infrastructure is present, but the selected Safe4337 module
-  stack is incomplete on the connected chain.
-- The **Safe scoped-wallet path is documented**: factory deployed (verified),
-  Transaction Service API + UI documented by Pharos. This may be the practical
-  fallback if Safe4337 module contracts remain unavailable.
-- The current implementation intentionally blocks `--simulate` / `--execute` when
-  required Safe4337 contracts are missing instead of signing an unexecutable plan.
+The default path this skill implements is the **Safe scoped wallet + ERC-4337
+UserOperation**, self-bundled through `EntryPoint.handleOps` (no public bundler
+needed). §G below documents this working end-to-end.
+
+---
+
+## G. Safe4337 actuator — ✅ DEPLOYED & PROVEN END-TO-END (2026-06-17)
+
+The full Safe v1.4.1 + Safe4337Module v0.3.0 stack was completed on Pharos and a
+real action was signed, simulated, and executed.
+
+### G.1 The gap and how it was closed
+Six contracts are required for the Safe + 4337 path. On 2026-06-17 (block
+10284615), four were already live but two were missing:
+
+| Required contract | Address | Before | After |
+| --- | --- | --- | --- |
+| EntryPoint v0.7 | `0x0000…da032` | ✅ | ✅ |
+| SafeProxyFactory v1.4.1 | `0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67` | ✅ | ✅ |
+| Safe L2 singleton v1.4.1 | `0x29fcB43b46531BcA003ddC8FCB67FFE91900C762` | ✅ | ✅ |
+| MultiSendCallOnly v1.4.1 | `0x9641d764fc13c8B624c04430C7356C1C7C8102e2` | ✅ | ✅ |
+| **Safe4337Module v0.3.0** | `0x75cf11467937ce3F2f357CE24ffc3DBF8fD5c226` | ❌ missing | ✅ deployed |
+| **SafeModuleSetup v0.3.0** | `0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47` | ❌ missing | ✅ deployed |
+
+No alternative official deployment exists on Pharos — these are deterministic
+addresses, so an official deploy *is* these addresses. We reproduced them exactly
+rather than inventing new ones.
+
+### G.2 Bytecode provenance (no guessed addresses, no unaudited code)
+- Safe deployed both modules via the **Arachnid Deterministic Deployment Proxy**
+  `0x4e59b44847b379578588920cA78FbF26c0B4956C` (verified present on Pharos, 69 B),
+  **not** the Safe Singleton Factory — confirmed from the canonical Ethereum-mainnet
+  creation tx `0x2807658b…ad95ad32` (its `to` is the Arachnid proxy; salt = zero).
+- The official `@safe-global/safe-4337@0.3.0-1` creation code was byte-compared to
+  the canonical mainnet deployment: the **runtime differs only in the metadata tail
+  and the 6 `entryPoint`-immutable slots** (Safe4337Module) and is **byte-identical**
+  (SafeModuleSetup). `CREATE2(Arachnid, salt=0, initCode)` reproduces
+  `0x75cf…c226` and `0x2dd6…5b47` **exactly**.
+- That verified creation code is committed under `scripts/aa/artifacts/*.json` with
+  provenance. `scripts/aa/deploy-modules.ts` re-asserts
+  `CREATE2 == canonical == configured address` and refuses on any mismatch.
+
+### G.3 Deployment transactions (Pharos mainnet)
+| Module | Deployed at | Runtime | Tx |
+| --- | --- | --- | --- |
+| Safe4337Module v0.3.0 | `0x75cf…c226` | 8,373 B (= mainnet) | `0x54e6415c189094bc6f4e542a2dbb0f1db47fa09b614aea819cd48f104b0e29be` |
+| SafeModuleSetup v0.3.0 | `0x2dd6…5b47` | 547 B (= mainnet) | `0x5ea999520a3c1bd5c2580d882908cff22825656f476432e2716c9c5cb9cdb058` |
+
+Deployer: owner EOA `0x0Ac6bf16…089f95`. After deploy, the actuator's
+`verifyInfra()` returns `allPresent: true, missing: []`.
+
+### G.4 Live action proof — supply 0.1 USDC to OpenFi
+- Derived Safe (salt 0): `0xBb9F1C5aEB8BD688e32B6F9a98dF7B63C6902790`.
+- Funded from the owner EOA with 0.5 PROS (gas prefund) + 0.15 USDC.
+- `--simulate` passed: the locally-computed `SafeOp` EIP-712 digest **matched the
+  deployed module's on-chain `getOperationHash`** (`matches: true`), and
+  `handleOps` gas-estimated cleanly (~1.02M).
+- `--execute` UserOp tx **`0xb92e807dc85df89cf6e424189ee8be80d6ce782f7fa52ffe755bcb5b746abcea`**,
+  status **1**, block 10286968. The Safe **deployed on first use** via `initCode`
+  and the atomic approve+supply ran.
+- On-chain result: Safe holds **0.1 bUSDC** (OpenFi aToken `0x9dcf…9D96`), 0.05 USDC
+  and 0.44 PROS remaining. Verified by reading `aToken.balanceOf(safe)`.
+
+### G.5 Bug found and fixed during execution
+The first two `--execute` attempts reverted (`status 0`, ~400k gas). Root cause:
+self-bundling relied on ethers' **auto gas estimation** for the outer `handleOps`
+tx, which under-estimates a **deploy-on-first-use** UserOp — the EVM **63/64 rule**
+means EntryPoint must hold more than `verificationGasLimit` to forward it to
+`validateUserOp` (which deploys the Safe), so a tight estimate starves the inner
+call and reverts as a `FailedOp`. Fixed in `scripts/aa/userop.ts` by setting the
+outer `gasLimit` explicitly from the UserOp's declared limits + ~12.5% headroom.
+The successful tx used 633,363 gas, well within the explicit budget.
+
+**Actuator status:** complete. Read analysis stays read-only; `act --simulate` /
+`act --execute` work against the live, fully-deployed Safe + 4337 stack.
 
 ---
 
