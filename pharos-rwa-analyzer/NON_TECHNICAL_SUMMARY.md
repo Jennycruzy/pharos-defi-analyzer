@@ -8,10 +8,11 @@ can demo the whole thing without reading any code.
 
 ## The one-sentence version
 
-It's a **safe "read-only" health check for a crypto wallet** on the Pharos
-network: it looks at where your money is parked, tells you whether you can pull it
-out, what you're *really* earning, and where your risks are — **without ever
-touching or moving your money.**
+It's a **safe health check plus optional action planner** for a crypto wallet on
+the Pharos network: it looks at where your money is parked, tells you whether you
+can pull it out, what you're *really* earning, and where your risks are. It only
+moves money if you explicitly run the separate `act --execute` path with a local
+signing key and funded Safe account.
 
 Think of it like a bank statement that also explains itself.
 
@@ -19,8 +20,9 @@ Think of it like a bank statement that also explains itself.
 
 ## The golden rules this tool follows
 
-1. **It never moves money.** It can only *look*. It has no password to your
-   wallet. (Moving money is a separate, later project — "Phase 2".)
+1. **Reports never move money.** The normal analyzer commands only *look*. The
+   actuator is separate, explicit, and needs a local owner key plus funds before
+   it can simulate or execute.
 2. **It never makes numbers up.** Every figure is pulled live from the blockchain
    or a real data service. If a number can't be sourced honestly, it's left out —
    never faked to look complete.
@@ -108,14 +110,13 @@ time*, not just once.
 
 ---
 
-## What "Phase 2" means (the next project)
+## What the actuator does
 
-This tool only *looks*. The next project ("Phase 2") would be a robot agent that
-can also *act* — for example, move money to a better-yielding spot — using the
-honest data this tool produces (that's what the `--json` option is for). We've
-already checked that the technical foundation for that exists on Pharos (the
-"EntryPoint" is live), and noted what still needs confirming. **This tool itself
-signs nothing and moves nothing.**
+The normal report commands only look. The `act` command can also prepare actions
+such as supplying, repaying, redeeming, or rebalancing through a Safe smart
+account. By default it is a dry-run and only prints the plan. Simulation and
+execution require `PHAROS_SIGNER_KEY` in your local `.env`; never paste a private
+key into chat.
 
 ---
 

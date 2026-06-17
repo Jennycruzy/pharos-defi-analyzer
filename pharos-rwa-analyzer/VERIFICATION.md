@@ -169,10 +169,11 @@ errors retry with backoff; genuine reverts are never swallowed.
 
 ---
 
-## Phase-2 signing readiness (record only — this analyzer signs NOTHING)
+## Actuator readiness
 
-The canonical predeploy table from `docs.pharos.xyz/llms-full.txt` was cross-checked
-with `eth_getCode` on mainnet. **All six are deployed** (run `npm run verify`):
+The canonical Pharos AA predeploy table from `docs.pharos.xyz/llms-full.txt` was
+cross-checked with `eth_getCode` on mainnet. **All six are deployed** (run
+`npm run verify`):
 
 | Contract | Address | Bytecode | Status |
 | --- | --- | --- | --- |
@@ -185,8 +186,9 @@ with `eth_getCode` on mainnet. **All six are deployed** (run `npm run verify`):
 
 | Probe | Result |
 | --- | --- |
-| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler. The docs corpus (`docs.pharos.xyz/llms-full.txt`) contains **no public bundler URL**. **STILL NOT FOUND** — for the 4337 session-key path, Phase 2 must self-host a bundler (Rundler/Alto/Skandha) or obtain one from the team. (Alchemy supports Pharos RPC but its AA/bundler product on Pharos is not documented.) |
-| **Tulipa write path** | Signature-gated deposit `0x50921b23(amount,receiver,deadline,v,r,s)` — Phase-2 deposits need the allowlisted signer. |
+| **Bundler** | `eth_supportedEntryPoints` on `rpc.pharos.xyz` → not a bundler. The docs corpus (`docs.pharos.xyz/llms-full.txt`) contains **no public bundler URL**. The actuator supports `PHAROS_BUNDLER_URL` when one exists and otherwise self-bundles through `EntryPoint.handleOps`. |
+| **Safe4337 module contracts** | Dry-run on 2026-06-17 found `Safe4337Module` `0x75cf…c226` and `SafeModuleSetup` `0x2dd6…5b47` **not deployed** on the connected Pharos RPC. `SafeProxyFactory`, Safe L2 singleton, EntryPoint v0.7, and MultiSendCallOnly are deployed. Dry-run planning works; simulation/execution are blocked until these module addresses are deployed, replaced with Pharos-deployed equivalents, or the actuator switches to a non-4337 Safe transaction path. |
+| **Tulipa write path** | Signature-gated deposit `0x50921b23(amount,receiver,deadline,v,r,s)` — the actuator refuses vault deposits and only supports standard ERC-4626 redeem/withdraw paths. |
 
 ### Signing rails found in the Pharos docs (the "agent center" search)
 - **Safe (Gnosis Safe) is officially supported** — the recommended scoped-wallet path:
@@ -204,17 +206,16 @@ with `eth_getCode` on mainnet. **All six are deployed** (run `npm run verify`):
   that signs via **Foundry `cast`/`forge --private-key`**, reads `assets/networks.json`
   for RPC/chain, and enforces a mandatory **4-check pre-check** before any write
   (private key, address, network, balance). This is the official blueprint for the
-  Phase-2 "scoped key + policy" agent.
+  scoped-key + policy agent.
 
-**Phase-2 decision input (sharpened):**
-- ERC-4337 is **fully viable on-chain** — both v0.6 and v0.7 EntryPoints +
-  SenderCreators are live — but has **no public bundler URL** yet (the one gap).
-- The **Safe scoped-wallet path is fully available**: factory deployed (verified),
-  Transaction Service API + UI documented by Pharos. **No bundler required.**
-- **Recommendation:** default Phase 2 to the **Safe scoped-wallet + policy** path
-  via `transaction.safe.pharosnetwork.xyz` (mirrors Pharos's own agent-toolkit
-  "scoped key + 4-check pre-check" model). Move to ERC-4337 session keys only once a
-  bundler is sourced; the on-chain infra for it is already confirmed present.
+**Actuator decision input:**
+- ERC-4337 EntryPoint infrastructure is present, but the selected Safe4337 module
+  stack is incomplete on the connected chain.
+- The **Safe scoped-wallet path is documented**: factory deployed (verified),
+  Transaction Service API + UI documented by Pharos. This may be the practical
+  fallback if Safe4337 module contracts remain unavailable.
+- The current implementation intentionally blocks `--simulate` / `--execute` when
+  required Safe4337 contracts are missing instead of signing an unexecutable plan.
 
 ---
 

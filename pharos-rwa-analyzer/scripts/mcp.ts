@@ -16,7 +16,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { ethers } from 'ethers';
 import { DEFAULT_ADDRESS } from './config.js';
-import { getLayer, getReport, getVerify, saveWalletSnapshot, toJson, type LayerName } from './api.js';
+import { getLayer, getReport, getVerify, runActuatorIntent, saveWalletSnapshot, toJson, type LayerName } from './api.js';
 import { listSnapshotAddresses, loadHistory } from './snapshot.js';
 
 const LAYERS = ['eligibility', 'maturity', 'trueyield', 'risk', 'nav', 'diff'] as const;
@@ -108,6 +108,58 @@ server.registerTool(
     inputSchema: addressShape,
   },
   async ({ address, allowTestnet }) => safe(() => saveWalletSnapshot(resolveAddress(address), allowTestnet ?? false)),
+);
+
+server.registerTool(
+  'pharos_act',
+  {
+    title: 'Plan, simulate, or execute a guarded Pharos action',
+    description:
+      'Write-side actuator for Pharos. Builds Safe/ERC-4337 UserOperations for supply, withdraw, borrow, repay, ' +
+      'setCollateral, redeem, or rebalance. mode="dry-run" only plans and needs no key. mode="simulate" signs ' +
+      'with PHAROS_SIGNER_KEY and validates without broadcasting. mode="execute" simulates first, then broadcasts. ' +
+      'Never pass a private key as an argument; it is read only from the local environment.',
+    inputSchema: {
+      owner: z
+        .string()
+        .optional()
+        .describe('Owner EOA for the Safe smart account. If omitted in simulate/execute, the signer key address is used.'),
+      mode: z.enum(['dry-run', 'simulate', 'execute']).optional().describe('Default dry-run. execute always simulates first.'),
+      kind: z
+        .enum(['supply', 'withdraw', 'borrow', 'repay', 'setCollateral', 'redeem', 'rebalance'])
+        .describe('Action intent.'),
+      product: z.string().optional().describe('Lending product, e.g. OpenFi or ZonaLend.'),
+      asset: z.string().optional().describe('Reserve asset symbol, e.g. USDC, WETH, WPROS.'),
+      amount: z.union([z.number(), z.literal('all')]).optional().describe('Human token amount, or "all".'),
+      useAsCollateral: z.boolean().optional().describe('Required for setCollateral.'),
+      maxSpendUsd: z.number().optional().describe('Tighten the per-action USD spend cap.'),
+      minHealthFactor: z.number().optional().describe('Tighten the health-factor floor; cannot go below the hard floor.'),
+      allowTestnet: z.boolean().optional().describe('Permit chain 688688. Default false — mainnet 1672 only.'),
+    },
+  },
+  async ({
+    owner,
+    mode,
+    kind,
+    product,
+    asset,
+    amount,
+    useAsCollateral,
+    maxSpendUsd,
+    minHealthFactor,
+    allowTestnet,
+  }) =>
+    safe(() =>
+      runActuatorIntent({
+        owner: owner ? resolveAddress(owner) : undefined,
+        ownerExplicit: Boolean(owner),
+        mode: mode ?? 'dry-run',
+        intent: { kind, product, asset, amount, useAsCollateral },
+        maxSpendUsd,
+        minHealthFactor,
+        allowTestnet: allowTestnet ?? false,
+      }),
+    ),
 );
 
 // --- Resources: saved snapshots, readable without a fresh scan ----------------

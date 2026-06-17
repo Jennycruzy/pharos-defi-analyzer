@@ -1,11 +1,16 @@
 # Pharos RWA Position Analyzer
 
-A **read-only** skill that gives a wallet a complete, honest picture of its DeFi
-+ real-world-asset (RWA) positions on **Pharos mainnet (chain 1672)**. It answers
-the questions generic analyzers don't: *can I act on this, when does it unlock,
-what's my REAL yield after incentives/fees, and where is my hidden risk?*
+A skill that gives a wallet a complete, honest picture of its DeFi +
+real-world-asset (RWA) positions on **Pharos mainnet (chain 1672)**, then can
+explicitly build guarded Safe/ERC-4337 actions when asked. It answers the
+questions generic analyzers don't: *can I act on this, when does it unlock,
+what's my REAL yield after incentives/fees, where is my hidden risk, and what
+action would be safe to prepare?*
 
-It **never signs, never holds a key, never moves funds.** Signing is Phase 2.
+Read/report commands **never sign, hold a key, or move funds**. The `act`
+surface signs only in `--simulate` or `--execute`, reads the owner key from
+local `.env` as `PHAROS_SIGNER_KEY`, and sends protocol calls through a Safe
+smart account.
 
 Every number it prints comes from a **real live read** of Pharos mainnet or the
 real Pharos Watch API. There are **no mocks, no fakes, no example numbers.** Each
@@ -37,7 +42,7 @@ block + hash + the exact reads performed) so anyone can reproduce it.
 - [Real example output](#real-example-output-default-owner-wallet-live-mainnet)
 - [Output for agents (`--json` shape)](#output-for-agents---json-shape)
 - [Confirmed vs Degraded](#confirmed-vs-degraded-per-layer)
-- [Phase-2 signing readiness](#phase-2-signing-readiness-from-verificationmd--this-app-signs-nothing)
+- [Actuator readiness](#actuator-readiness-from-verificationmd)
 - [Tests](#tests)
 - [Continuous integration](#continuous-integration)
 - [Architecture](#architecture)
@@ -60,11 +65,16 @@ block + hash + the exact reads performed) so anyone can reproduce it.
   **pinned block**, with retry/backoff; one report is internally consistent.
 - **Replayable proof** — `meta.proof` pins block + hash + the exact
   `(contract, selector)` reads, so a third party can reproduce byte-identical values.
-- **Reusable by agents** — ships an **MCP server** (tools + a snapshot **resource** +
-  an `explain_wallet` **prompt**) and an importable **library API**.
+- **Reusable by agents** — ships an **MCP server** (read tools, `pharos_act`, a
+  snapshot **resource**, and an `explain_wallet` **prompt**) and an importable
+  **library API**.
+- **Guarded actuator** — dry-run Safe/ERC-4337 plans need no key; simulation and
+  execution require `PHAROS_SIGNER_KEY`, spend caps, health-factor floors, SafeOp
+  digest checks, and live UserOperation simulation before broadcast.
 - **Guarded** — 23 tests (live + a **golden-snapshot** regression + pure-logic),
   strict TypeScript, and CI on every push/PR.
-- **Read-only** — never signs, never holds a key, never moves funds. Signing is Phase 2.
+- **Explicit writes only** — analysis remains read-only; write actions are only
+  built through `act` / `pharos_act` and only broadcast with `--execute`.
 
 ---
 
@@ -121,12 +131,16 @@ cp .env.example .env        # optional — sensible defaults are baked in
 npm run typecheck           # strict TS, should print nothing (clean)
 ```
 
-No keys are required. Optional `.env` settings:
+No keys are required for read reports. Optional `.env` settings:
 - `PHAROS_RPC_URL` — override the default `https://rpc.pharos.xyz`.
 - `PHAROS_WATCH_API_KEY` — unlocks the live NAV/depeg API layer (request a
   self-serve key at https://pharos.watch/api/). Without it the `nav` layer still
   works using on-chain drift and clearly says the API portion is unavailable.
 - `DEFAULT_ADDRESS` — the wallet to analyze when `--address` isn't given.
+- `PHAROS_SIGNER_KEY` — owner EOA key for `act --simulate` / `act --execute`
+  only. Never pass this key as a CLI argument or chat message.
+- `PHAROS_BUNDLER_URL` — optional ERC-4337 bundler; empty means self-bundle
+  through `EntryPoint.handleOps`.
 
 ---
 
@@ -134,17 +148,26 @@ No keys are required. Optional `.env` settings:
 
 ```bash
 npm run analyze -- <command> [--address 0x..] [--json] [--allow-testnet]
+npm run act -- <intent> [--owner 0x..] [--product OpenFi] [--asset USDC] [--amount 10]
 
 # examples
 npm run analyze -- report                       # full picture, default wallet
 npm run analyze -- trueyield --address 0xABC…    # one layer, a specific wallet
-npm run analyze -- report --json                 # machine-readable (Phase-2 bridge)
+npm run analyze -- report --json                 # machine-readable read report
 npm run verify                                   # re-run Step-0 live verification
+npm run act -- rebalance --owner 0xABC…          # dry-run plan, no key needed
+npm run act -- repay --owner 0xABC… --product OpenFi --asset USDC --amount all --simulate
 ```
 
 Flags: `--address` (defaults to the verified owner wallet), `--json` (structured
 output), `--allow-testnet` (permit chain 688688; **mainnet is the default and the
 network of all results**).
+
+Actuator intents: `supply`, `withdraw`, `borrow`, `repay`, `redeem`,
+`rebalance`, and `set-collateral` (or `--enable-collateral` /
+`--disable-collateral`). Dry-run prints the derived Safe address; fund that Safe
+with the token being supplied/repaid/redeemed before simulation or execution.
+If self-bundling, the owner EOA also needs native gas for `handleOps`.
 
 ---
 
@@ -152,9 +175,10 @@ network of all results**).
 
 This skill ships a **Model Context Protocol** server so any MCP-capable agent
 (Claude Desktop, IDE assistants, custom agents) can call it **in natural language**.
-The tools are **read-only** and return the exact same structured JSON as the CLI
-(shared via `scripts/api.ts`, so they can never drift). The server signs nothing
-and holds no key.
+Read tools return the exact same structured JSON as the CLI (shared via
+`scripts/api.ts`, so they can never drift). The `pharos_act` tool is the explicit
+write surface: dry-run needs no key, while simulate/execute read
+`PHAROS_SIGNER_KEY` from local environment only.
 
 **Start it:**
 
@@ -397,7 +421,7 @@ block-bound, so they're excluded from the deterministic guarantee.)
 
 ---
 
-## Phase-2 signing readiness (from `VERIFICATION.md` — this app signs nothing)
+## Actuator readiness (from `VERIFICATION.md`)
 
 All account-abstraction predeploys below are **confirmed deployed on mainnet**
 (`npm run verify` checks them live):
@@ -405,17 +429,23 @@ All account-abstraction predeploys below are **confirmed deployed on mainnet**
 - **ERC-4337 EntryPoint v0.7** `0x0000…da032` and **v0.6** `0x5FF1…2789` — both deployed.
 - **SenderCreator v0.7 / v0.6** — both deployed.
 - **SafeSingletonFactory** `0x914d…43d7` and **CreateX** `0xba5E…ba5Ed` — both deployed.
-- **Bundler**: still **not found** (no public URL in the docs corpus) — Phase 2 must
-  self-host one (Rundler/Alto/Skandha) or obtain it from the team for the 4337 path.
+- **Bundler**: still **not found** (no public URL in the docs corpus). The
+  actuator can use `PHAROS_BUNDLER_URL` when one exists; otherwise it self-bundles
+  through `EntryPoint.handleOps`.
+- **Safe4337 module stack**: dry-run on June 17, 2026 found `Safe4337Module`
+  `0x75cf…c226` and `SafeModuleSetup` `0x2dd6…5b47` missing on the connected
+  Pharos RPC. Planning works, but simulation/execution are intentionally blocked
+  until those module contracts are deployed, replaced with Pharos-deployed
+  equivalents, or the actuator switches to the Safe Transaction Service path.
 - **Signing rails (from the docs):** **Safe** is officially supported — UI
   `app.safe.global` + Transaction Service `transaction.safe.pharosnetwork.xyz`;
   **Fordefi** (MPC) is available; and Pharos ships an **agent toolkit** that signs via
   Foundry `--private-key` behind a mandatory 4-check pre-check.
 - **Tulipa write path**: deposits are signature-gated (`0x50921b23(amount,
-  receiver, deadline, v, r, s)`) — Phase 2 needs the allowlisted signer.
-- **Recommendation**: default Phase 2 to the **Safe scoped-wallet + policy** path
-  (factory deployed + Tx Service documented, **no bundler required**). ERC-4337
-  session keys are viable once a bundler is sourced — the on-chain infra is present.
+  receiver, deadline, v, r, s)`), so the actuator refuses vault deposits and only
+  supports standard ERC-4626 redeem/withdraw paths.
+- **Default path**: Safe scoped wallet + ERC-4337 UserOperation, with direct
+  `handleOps` self-bundling when no public bundler is configured.
 
 ## Tests
 

@@ -12,6 +12,7 @@
     "analyze": "tsx scripts/cli.ts",
     "verify": "tsx scripts/cli.ts verify",
     "report": "tsx scripts/cli.ts report",
+    "act": "tsx scripts/cli.ts act",
     "mcp": "tsx scripts/mcp.ts",
     "test": "tsx --test tests/*.test.ts",
     "golden:gen": "tsx tests/golden/generate.ts",

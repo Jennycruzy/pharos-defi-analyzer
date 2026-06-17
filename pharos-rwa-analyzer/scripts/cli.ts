@@ -1,14 +1,15 @@
 #!/usr/bin/env -S npx tsx
 /**
- * cli.ts — command surface for the Pharos RWA Analyzer (READ-ONLY).
+ * cli.ts — command surface for the Pharos RWA Analyzer.
  *
  * Commands: verify | eligibility | maturity | trueyield | risk | nav | diff |
- *           snapshot | report
+ *           snapshot | report | act
  * Flags:    --address <0x..>   (default: verified owner wallet / DEFAULT_ADDRESS)
  *           --json             (emit structured JSON — the Phase-2 bridge)
  *           --allow-testnet    (permit chain 688688; mainnet is the default)
  *
- * This tool NEVER signs, holds a key, or moves funds. Signing is Phase 2.
+ * Read commands never sign. The `act` command only signs when --simulate or
+ * --execute is passed and PHAROS_SIGNER_KEY is present in the local environment.
  */
 
 import { ethers } from 'ethers';
@@ -23,41 +24,145 @@ import { analyzeDiff, buildSnapshot } from './layers/diff.js';
 import { loadPrevious, saveSnapshot, snapshotDir, type Snapshot } from './snapshot.js';
 import { buildReport, getVerify, usdMap } from './api.js';
 import type { Sourced } from './types.js';
+import { type IntentKind, type IntentRequest, type PlannedAction } from './plan.js';
+import { runActuator } from './act.js';
 
-const COMMANDS = ['verify', 'eligibility', 'maturity', 'trueyield', 'risk', 'nav', 'diff', 'snapshot', 'report'] as const;
+const COMMANDS = ['verify', 'eligibility', 'maturity', 'trueyield', 'risk', 'nav', 'diff', 'snapshot', 'report', 'act'] as const;
 type Command = (typeof COMMANDS)[number];
 
 interface Args {
   command: Command;
   address: string;
+  addressExplicit: boolean;
   json: boolean;
   allowTestnet: boolean;
+  act: ActArgs | null;
+}
+
+interface ActArgs {
+  intent: IntentRequest;
+  simulate: boolean;
+  execute: boolean;
+  maxSpendUsd?: number;
+  minHealthFactor?: number;
 }
 
 function parseArgs(argv: string[]): Args {
   const [, , cmd, ...rest] = argv;
   const command = (cmd ?? 'report') as Command;
   let address = DEFAULT_ADDRESS;
+  let addressExplicit = false;
   let json = false;
   let allowTestnet = false;
+  const act: Omit<Partial<ActArgs>, 'intent'> & { intent: Partial<IntentRequest> } = { intent: {} };
+  let actKindSet = false;
+
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--json') json = true;
     else if (a === '--allow-testnet') allowTestnet = true;
-    else if (a === '--address') {
+    else if (a === '--address' || a === '--owner') {
       const next = rest[++i];
-      if (!next) fail('--address requires a value');
+      if (!next) fail(`${a} requires a value`);
       address = next as string;
+      addressExplicit = true;
+    } else if (command === 'act' && !actKindSet && a && !a.startsWith('--')) {
+      act.intent!.kind = parseIntentKind(a);
+      actKindSet = true;
+    } else if (command === 'act' && a === '--product') {
+      act.intent!.product = requireFlagValue(rest, ++i, a);
+    } else if (command === 'act' && a === '--asset') {
+      act.intent!.asset = requireFlagValue(rest, ++i, a);
+    } else if (command === 'act' && a === '--amount') {
+      act.intent!.amount = parseAmount(requireFlagValue(rest, ++i, a));
+    } else if (command === 'act' && a === '--max-spend') {
+      act.maxSpendUsd = parseNumberFlag(requireFlagValue(rest, ++i, a), a);
+    } else if (command === 'act' && a === '--min-health-factor') {
+      act.minHealthFactor = parseNumberFlag(requireFlagValue(rest, ++i, a), a);
+    } else if (command === 'act' && a === '--simulate') {
+      act.simulate = true;
+    } else if (command === 'act' && a === '--execute') {
+      act.execute = true;
+    } else if (command === 'act' && a === '--enable-collateral') {
+      act.intent!.kind = 'setCollateral';
+      act.intent!.useAsCollateral = true;
+      actKindSet = true;
+    } else if (command === 'act' && a === '--disable-collateral') {
+      act.intent!.kind = 'setCollateral';
+      act.intent!.useAsCollateral = false;
+      actKindSet = true;
+    } else if (command === 'act' && a === '--use-collateral') {
+      const v = requireFlagValue(rest, ++i, a).toLowerCase();
+      if (v !== 'true' && v !== 'false') fail('--use-collateral requires true or false');
+      act.intent!.kind = 'setCollateral';
+      act.intent!.useAsCollateral = v === 'true';
+      actKindSet = true;
     }
   }
   if (!COMMANDS.includes(command)) fail(`Unknown command "${command}". Use one of: ${COMMANDS.join(', ')}`);
   if (!ethers.isAddress(address)) fail(`Invalid address: ${address}`);
-  return { command, address: ethers.getAddress(address), json, allowTestnet };
+  if (command === 'act' && !act.intent?.kind) {
+    fail(
+      'act requires an intent: supply | withdraw | borrow | repay | redeem | rebalance, ' +
+        'or --enable-collateral/--disable-collateral.',
+    );
+  }
+  return {
+    command,
+    address: ethers.getAddress(address),
+    addressExplicit,
+    json,
+    allowTestnet,
+    act: command === 'act'
+      ? {
+          intent: act.intent as IntentRequest,
+          simulate: act.simulate ?? false,
+          execute: act.execute ?? false,
+          maxSpendUsd: act.maxSpendUsd,
+          minHealthFactor: act.minHealthFactor,
+        }
+      : null,
+  };
 }
 
 function fail(msg: string): never {
   console.error(`Error: ${msg}`);
   process.exit(1);
+}
+
+function requireFlagValue(rest: string[], index: number, flag: string): string {
+  const value = rest[index];
+  if (!value || value.startsWith('--')) fail(`${flag} requires a value`);
+  return value;
+}
+
+function parseNumberFlag(value: string, flag: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) fail(`${flag} requires a finite number`);
+  return n;
+}
+
+function parseAmount(value: string): number | 'all' {
+  if (value.toLowerCase() === 'all') return 'all';
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) fail('--amount requires a positive number or "all"');
+  return n;
+}
+
+function parseIntentKind(value: string): IntentKind {
+  const normalized = value.toLowerCase();
+  if (normalized === 'set-collateral' || normalized === 'setcollateral') return 'setCollateral';
+  if (
+    normalized === 'supply' ||
+    normalized === 'withdraw' ||
+    normalized === 'borrow' ||
+    normalized === 'repay' ||
+    normalized === 'redeem' ||
+    normalized === 'rebalance'
+  ) {
+    return normalized;
+  }
+  fail(`Unknown act intent "${value}".`);
 }
 
 // --- source-label helpers for human output ---
@@ -83,6 +188,10 @@ async function main(): Promise<void> {
 
   if (args.command === 'verify') {
     await runVerify(args.json);
+    return;
+  }
+  if (args.command === 'act') {
+    await runAct(args);
     return;
   }
 
@@ -136,6 +245,57 @@ function emit(args: Args, jsonObj: object, printer: () => void): void {
 
 function json(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
+}
+
+// ---------------------------------------------------------------- act ----
+async function runAct(args: Args): Promise<void> {
+  if (!args.act) fail('Missing act arguments.');
+  const mode = args.act.execute ? 'execute' : args.act.simulate ? 'simulate' : 'dry-run';
+  const result = await runActuator({
+    intent: args.act.intent,
+    owner: args.address,
+    ownerExplicit: args.addressExplicit,
+    allowTestnet: args.allowTestnet,
+    maxSpendUsd: args.act.maxSpendUsd,
+    minHealthFactor: args.act.minHealthFactor,
+    mode,
+  });
+  if (args.json) console.log(json(result));
+  else printActPlan(result);
+}
+
+function printActPlan(result: {
+  owner: string;
+  safe: string;
+  safeDeployed: boolean;
+  mode: string;
+  plan: PlannedAction;
+  userOpHash: string;
+  gasEstimate?: bigint | null;
+  transaction?: { txHash: string; via: string; blockNumber: number | null; gasUsed: string | null };
+  infra?: { allPresent: boolean; missing: string[] };
+}): void {
+  h(`ACTUATOR ${result.mode.toUpperCase()} — ${result.plan.kind}`);
+  console.log(`Owner EOA : ${result.owner}`);
+  console.log(`Safe      : ${result.safe} (${result.safeDeployed ? 'deployed' : 'counterfactual; deploys on first UserOp'})`);
+  console.log(`Plan      : ${result.plan.description}`);
+  console.log(`Spend cap : $${trim(result.plan.guard.maxSpendUsd)} | HF floor ${trim(result.plan.guard.minHealthFactor)}`);
+  console.log(`Moves     : $${trim(result.plan.spendUsd)} counted against cap`);
+  for (const tx of result.plan.metaTxs) console.log(`  • ${tx.label} -> ${tx.to}`);
+  for (const w of result.plan.warnings) console.log(`  ! ${w}`);
+  if (result.infra && !result.infra.allPresent) {
+    console.log(`  ! Missing AA infra: ${result.infra.missing.join(', ')}. Simulation/execution are blocked until resolved.`);
+  }
+  console.log(`UserOpHash: ${result.userOpHash}`);
+  if (result.gasEstimate != null) console.log(`Gas est.  : ${result.gasEstimate.toString()}`);
+  if (result.transaction) {
+    console.log(`Sent via  : ${result.transaction.via}`);
+    console.log(`Tx hash   : ${result.transaction.txHash}`);
+    console.log(`Block     : ${result.transaction.blockNumber ?? 'pending/unknown'}`);
+    console.log(`Gas used  : ${result.transaction.gasUsed ?? 'unknown'}`);
+  } else if (result.mode === 'dry-run') {
+    console.log(`Next      : add --simulate to sign and validate without broadcast; add --execute to broadcast.`);
+  }
 }
 
 // ---------------------------------------------------------------- verify ----

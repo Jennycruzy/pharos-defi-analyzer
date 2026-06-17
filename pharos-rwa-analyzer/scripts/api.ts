@@ -6,8 +6,8 @@
  * TypeScript agents can also import these functions directly instead of shelling
  * out to the CLI.
  *
- * Everything here is READ-ONLY — it collects a live scan and runs the six pure
- * layer functions over it. It never signs or writes.
+ * Report/layer helpers are read-only. The explicit actuator helper at the bottom
+ * is the only API that may sign, and only when requested via PHAROS_SIGNER_KEY.
  */
 
 import { ethers } from 'ethers';
@@ -24,6 +24,7 @@ import { analyzeRisk, type RiskResult } from './layers/risk.js';
 import { analyzeNav, type NavResult } from './layers/nav.js';
 import { analyzeDiff, buildSnapshot, type DiffResult } from './layers/diff.js';
 import type { AnalyzerError } from './types.js';
+import { runActuator, type ActuatorRequest, type ActuatorResult } from './act.js';
 
 export type LayerName = 'eligibility' | 'maturity' | 'trueyield' | 'risk' | 'nav' | 'diff';
 
@@ -241,4 +242,9 @@ export async function getVerify(allowTestnet = true): Promise<VerifyResult> {
 /** Serialize any analyzer object to JSON, rendering bigint as string. */
 export function toJson(obj: unknown): string {
   return JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? v.toString() : v), 2);
+}
+
+/** Plan/simulate/execute a guarded Safe UserOperation. This is the write-skill API. */
+export async function runActuatorIntent(request: ActuatorRequest): Promise<ActuatorResult> {
+  return runActuator(request);
 }

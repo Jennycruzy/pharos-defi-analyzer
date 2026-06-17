@@ -12,6 +12,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { analyzeDiff } from '../scripts/layers/diff.js';
 import { priceDropToLiquidation } from '../scripts/layers/risk.js';
+import { findBestRebalance } from '../scripts/plan.js';
+import type { WalletScan } from '../scripts/collect.js';
 import type { Snapshot } from '../scripts/snapshot.js';
 
 function snap(overrides: Partial<Snapshot> & { takenAt: number }): Snapshot {
@@ -102,4 +104,144 @@ test('analyzeDiff: detects a market freezing', () => {
   assert.ok(frozen, 'should detect freeze toggle');
   assert.equal(frozen.after, true);
   assert.ok(frozen.note.includes('FROZEN'));
+});
+
+function scanForPlan(overrides: Partial<WalletScan> = {}): WalletScan {
+  return {
+    address: '0x0000000000000000000000000000000000000001',
+    network: { chainId: 1672n, blockNumber: 1, isMainnet: true, rpcUrl: 'local' },
+    block: 1,
+    blockHash: null,
+    reads: [],
+    lending: [],
+    vault: null,
+    watch: { configured: false, health: { reachable: false, status: null, upstreamProvider: null, raw: null } },
+    errors: [],
+    ...overrides,
+  };
+}
+
+test('findBestRebalance: selects higher APY venue for the same supplied asset', () => {
+  const scan = scanForPlan({
+    lending: [
+      {
+        product: 'OpenFi',
+        venue: 'OpenFi',
+        access: 'permissionless',
+        oracleAddress: '0x0000000000000000000000000000000000000002',
+        dataProviderAddress: '0x0000000000000000000000000000000000000003',
+        reserves: [],
+        positions: [
+          {
+            symbol: 'USDC',
+            address: '0x0000000000000000000000000000000000000004',
+            decimals: 6,
+            suppliedAmount: 100,
+            borrowedAmount: 0,
+            supplyAprPct: 2,
+            liquidationThresholdPct: 80,
+            usageAsCollateral: false,
+            withdrawableNow: 100,
+          },
+        ],
+        account: { totalCollateralUsd: 0, totalDebtUsd: 0, ltvPct: 0, liquidationThresholdPct: 0, healthFactor: Infinity },
+        assetUsd: { '0x0000000000000000000000000000000000000004': 1 },
+        incentives: {},
+      },
+      {
+        product: 'ZonaLend',
+        venue: 'ZonaLend',
+        access: 'permissionless',
+        oracleAddress: '0x0000000000000000000000000000000000000005',
+        dataProviderAddress: '0x0000000000000000000000000000000000000006',
+        reserves: [
+          {
+            symbol: 'USDC',
+            address: '0x0000000000000000000000000000000000000004',
+            aTokenAddress: '0x0000000000000000000000000000000000000007',
+            decimals: 6,
+            supplyAprPct: 4,
+            supplyApyPct: 4.1,
+            variableBorrowAprPct: 0,
+            ltvPct: 0,
+            liquidationThresholdPct: 0,
+            isActive: true,
+            isFrozen: false,
+            availableLiquidity: 1000,
+          },
+        ],
+        positions: [],
+        account: { totalCollateralUsd: 0, totalDebtUsd: 0, ltvPct: 0, liquidationThresholdPct: 0, healthFactor: Infinity },
+        assetUsd: {},
+        incentives: {},
+      },
+    ],
+  });
+
+  const candidate = findBestRebalance(scan, { maxSpendUsd: 500 });
+  assert.ok(candidate);
+  assert.equal(candidate.fromProduct, 'OpenFi');
+  assert.equal(candidate.toProduct, 'ZonaLend');
+  assert.equal(candidate.asset, 'USDC');
+  assert.equal(candidate.amount, 100);
+});
+
+test('findBestRebalance: spend cap rejects otherwise profitable move', () => {
+  const scan = scanForPlan({
+    lending: [
+      {
+        product: 'A',
+        venue: 'A',
+        access: 'permissionless',
+        oracleAddress: '0x0000000000000000000000000000000000000002',
+        dataProviderAddress: '0x0000000000000000000000000000000000000003',
+        reserves: [],
+        positions: [
+          {
+            symbol: 'USDC',
+            address: '0x0000000000000000000000000000000000000004',
+            decimals: 6,
+            suppliedAmount: 100,
+            borrowedAmount: 0,
+            supplyAprPct: 1,
+            liquidationThresholdPct: 80,
+            usageAsCollateral: false,
+            withdrawableNow: 100,
+          },
+        ],
+        account: { totalCollateralUsd: 0, totalDebtUsd: 0, ltvPct: 0, liquidationThresholdPct: 0, healthFactor: Infinity },
+        assetUsd: { '0x0000000000000000000000000000000000000004': 1 },
+        incentives: {},
+      },
+      {
+        product: 'B',
+        venue: 'B',
+        access: 'permissionless',
+        oracleAddress: '0x0000000000000000000000000000000000000005',
+        dataProviderAddress: '0x0000000000000000000000000000000000000006',
+        reserves: [
+          {
+            symbol: 'USDC',
+            address: '0x0000000000000000000000000000000000000004',
+            aTokenAddress: '0x0000000000000000000000000000000000000007',
+            decimals: 6,
+            supplyAprPct: 8,
+            supplyApyPct: 8,
+            variableBorrowAprPct: 0,
+            ltvPct: 0,
+            liquidationThresholdPct: 0,
+            isActive: true,
+            isFrozen: false,
+            availableLiquidity: 1000,
+          },
+        ],
+        positions: [],
+        account: { totalCollateralUsd: 0, totalDebtUsd: 0, ltvPct: 0, liquidationThresholdPct: 0, healthFactor: Infinity },
+        assetUsd: {},
+        incentives: {},
+      },
+    ],
+  });
+
+  assert.equal(findBestRebalance(scan, { maxSpendUsd: 50 }), null);
 });
