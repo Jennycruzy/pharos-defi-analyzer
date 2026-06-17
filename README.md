@@ -187,6 +187,9 @@ Actuator intents: `supply`, `withdraw`, `borrow`, `repay`, `redeem`,
 `--disable-collateral`). Dry-run prints the derived Safe address; fund that Safe
 with the token being supplied/repaid/redeemed before simulation or execution.
 If self-bundling, the owner EOA also needs native gas for `handleOps`.
+If `--simulate` or `--execute` is requested without `PHAROS_SIGNER_KEY`, the
+tool now returns a paste-ready `.env` template and tells the operator to retry
+the same action after filling it in locally.
 
 ---
 
@@ -320,11 +323,19 @@ Nothing is faked to fill the gap.
 
 ```
 STEP-0 LIVE VERIFICATION
-Network         : chainId 1672 (Pharos mainnet ✓) block 10217138
-OpenFi          : oracle 0x878aF9…a6d1  dataProvider 0x3EF472…67Fb
-ZonaLend        : oracle 0x6bEDfC…73f9  dataProvider 0xA91424…f49A
-EntryPoint      : ✓ deployed (16035 bytes) — Phase-2 prep
-Pharos Watch    : health ✓ status=healthy upstream=DefiLlama key=not set
+────────────────────────
+Network         : chainId 1672 (Pharos mainnet ✓) block 10287947
+RPC             : https://rpc.pharos.xyz
+OpenFi          : oracle 0x878aF9E17C0168bBCdB4f33890Bf8CDE7592a6d1  dataProvider 0x3EF4724f0f2fabfA0ba96AfC711D64e6BE3367Fb
+ZonaLend        : oracle 0x6bEDfCa244f29dD916fe7c50e1469C6188B873f9  dataProvider 0xA91424C666193C2b2fb684E25dEadf03B333f49A
+AA predeploys   : (Phase-2 prep — this app signs nothing)
+  ✓ EntryPoint v0.7         16035 bytes  0x0000000071727De22E5E9d8BAf0edAc6f37da032
+  ✓ EntryPoint v0.6         23689 bytes  0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789
+  ✓ SenderCreator v0.7        451 bytes  0xEFC2c1444eBCC4Db75e7613d20C6a62fF67A167C
+  ✓ SenderCreator v0.6        528 bytes  0x7fc98430eAEdbb6070B35B39D798725049088348
+  ✓ SafeSingletonFactory       69 bytes  0x914d7Fec6aaC8cd542e72Bca78B30650d45643d7
+  ✓ CreateX                 11838 bytes  0xba5Ed099633D3B313e4D5F7bdc1305d3c28ba5Ed
+Pharos Watch    : health ✓ status=healthy upstream=DefiLlama key=set
 ```
 
 `npm run analyze -- report` (abridged — these are **real** values for

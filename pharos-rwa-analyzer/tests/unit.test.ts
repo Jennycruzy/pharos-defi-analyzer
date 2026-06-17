@@ -10,6 +10,7 @@
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
+import { missingSignerEnvMessage } from '../scripts/act.js';
 import { analyzeDiff } from '../scripts/layers/diff.js';
 import { priceDropToLiquidation } from '../scripts/layers/risk.js';
 import { findBestRebalance } from '../scripts/plan.js';
@@ -104,6 +105,14 @@ test('analyzeDiff: detects a market freezing', () => {
   assert.ok(frozen, 'should detect freeze toggle');
   assert.equal(frozen.after, true);
   assert.ok(frozen.note.includes('FROZEN'));
+});
+
+test('missingSignerEnvMessage: returns a retryable .env template', () => {
+  const msg = missingSignerEnvMessage('execute');
+  assert.ok(msg.includes('PHAROS_SIGNER_KEY is required for execute'));
+  assert.ok(msg.includes('```dotenv'));
+  assert.ok(msg.includes('PHAROS_SIGNER_KEY='));
+  assert.ok(msg.includes('Then retry the same execute request.'));
 });
 
 function scanForPlan(overrides: Partial<WalletScan> = {}): WalletScan {

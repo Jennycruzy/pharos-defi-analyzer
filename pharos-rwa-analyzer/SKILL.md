@@ -63,6 +63,9 @@ Funding/key rule:
 - The Safe address printed by dry-run is the account that must hold protocol funds
   for supply/repay/redeem/withdraw flows.
 - If self-bundling, the owner EOA also needs native gas for `handleOps`.
+- If a simulate/execute request needs a signer key and `.env` is missing, the
+  tool returns a paste-ready `.env` snippet and tells you to retry the same
+  request after filling it in locally.
 
 ## MCP Tools
 

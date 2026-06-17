@@ -37,10 +37,33 @@ export interface ActuatorResult {
   infra: InfraStatus;
 }
 
+function signerEnvTemplate(): string {
+  return [
+    '# Add this to pharos-rwa-analyzer/.env and retry the same simulate/execute request.',
+    'PHAROS_SIGNER_KEY=',
+    '# optional if you use a private ERC-4337 bundler; otherwise self-bundling is used',
+    'PHAROS_BUNDLER_URL=',
+  ].join('\n');
+}
+
+export function missingSignerEnvMessage(mode: ActMode): string {
+  return [
+    `${SIGNER_KEY_ENV} is required for ${mode} but is not set in the local environment.`,
+    'Never pass a private key in chat or as a tool argument.',
+    '',
+    'Create or update `pharos-rwa-analyzer/.env` with:',
+    '```dotenv',
+    signerEnvTemplate(),
+    '```',
+    '',
+    `Then retry the same ${mode} request.`,
+  ].join('\n');
+}
+
 export async function runActuator(req: ActuatorRequest): Promise<ActuatorResult> {
   const mode = req.mode ?? 'dry-run';
   const needsSigner = mode === 'simulate' || mode === 'execute';
-  const signer = loadSigner(needsSigner);
+  const signer = loadSigner(needsSigner ? mode : null);
   const owner = signer && !req.ownerExplicit ? await signer.getAddress() : req.owner ?? DEFAULT_ADDRESS;
   if (!ethers.isAddress(owner)) throw new Error(`Invalid owner address: ${owner}`);
   if (signer && ethers.getAddress(await signer.getAddress()) !== ethers.getAddress(owner)) {
@@ -113,10 +136,10 @@ export async function runActuator(req: ActuatorRequest): Promise<ActuatorResult>
   };
 }
 
-function loadSigner(required: boolean): ethers.Wallet | null {
+function loadSigner(requiredMode: ActMode | null): ethers.Wallet | null {
   const key = process.env[SIGNER_KEY_ENV]?.trim();
   if (!key) {
-    if (required) throw new Error(`${SIGNER_KEY_ENV} is not set. Add it to .env; never pass a private key as an argument.`);
+    if (requiredMode) throw new Error(missingSignerEnvMessage(requiredMode));
     return null;
   }
   return new ethers.Wallet(key, getProvider());
