@@ -145,10 +145,19 @@ export const USD_BASE = 10n ** 8n; // Aave oracle base currency unit (verified 1
  * no raw protocol access from the key, batched/atomic actions.
  *
  * The Safe contract addresses below are the CANONICAL deterministic deployments
- * (Safe v1.4.1 + safe-modules/4337 v0.3.0), identical on every chain that used
- * the Safe Singleton Factory. We NEVER trust them blindly: `aa/safe.ts` verifies
- * each via eth_getCode at runtime and refuses to act if any is missing on Pharos
- * (same "never assume; verify" rule the read side follows).
+ * (Safe v1.4.1 + safe-modules/4337 v0.3.0): the same CREATE2 address on every
+ * chain, because the singleton + factory came from the Safe Singleton Factory and
+ * the 4337 module + module-setup came from the Arachnid Deterministic Deployment
+ * Proxy (`deployProxy` below), each with a zero salt and identical creation code.
+ * We NEVER trust them blindly: `aa/safe.ts` verifies each via eth_getCode at
+ * runtime and refuses to act if any is missing on Pharos (same "never assume;
+ * verify" rule the read side follows).
+ *
+ * Status on Pharos mainnet (verified 2026-06-17, block 10284615): EntryPoint v0.7,
+ * SafeProxyFactory, the Safe L2 singleton, MultiSendCallOnly and both deployment
+ * factories are live, but Safe4337Module + SafeModuleSetup are NOT yet deployed.
+ * They are deployable to these exact addresses with `npm run deploy:modules`
+ * (scripts/aa/deploy-modules.ts) — deterministic CREATE2, no address changes.
  * ──────────────────────────────────────────────────────────────────────────── */
 export const AA = {
   /** ERC-4337 EntryPoint v0.7 (same constant as ENTRYPOINT_ADDRESS; verified deployed). */
@@ -164,6 +173,14 @@ export const AA = {
     moduleSetup: '0x2dd68b007B46fBe91B9A7c3EDa5A7a1063cB5b47',
     /** MultiSendCallOnly v1.4.1 — atomic batching of CALL-only meta-transactions. */
     multiSendCallOnly: '0x9641d764fc13c8B624c04430C7356C1C7C8102e2',
+    /**
+     * Arachnid Deterministic Deployment Proxy — the CREATE2 deployer Safe used for
+     * the 4337 module + module-setup (zero salt). Verified present on Pharos; only
+     * used by scripts/aa/deploy-modules.ts to land those two modules at the exact
+     * canonical addresses above. (The Safe singleton/factory used a different
+     * deterministic deployer — the Safe Singleton Factory at 0x914d…43d7.)
+     */
+    deployProxy: '0x4e59b44847b379578588920cA78FbF26c0B4956C',
   },
   /** Deterministic salt for the owner's primary Safe. Override to derive a second account. */
   saltNonce: BigInt(process.env.PHAROS_SAFE_SALT?.trim() || '0'),

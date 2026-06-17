@@ -13,6 +13,7 @@
     "verify": "tsx scripts/cli.ts verify",
     "report": "tsx scripts/cli.ts report",
     "act": "tsx scripts/cli.ts act",
+    "deploy:modules": "tsx scripts/aa/deploy-modules.ts",
     "mcp": "tsx scripts/mcp.ts",
     "test": "tsx --test tests/*.test.ts",
     "golden:gen": "tsx tests/golden/generate.ts",
