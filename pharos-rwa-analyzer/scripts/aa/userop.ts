@@ -244,7 +244,16 @@ async function sendViaHandleOps(
   opHash: string,
 ): Promise<SendResult> {
   const entryPoint = new ethers.Contract(AA.entryPoint, ENTRYPOINT_V07_ABI, signer);
-  const tx = await entryPoint.handleOps([toTuple(op)], await signer.getAddress());
+  // Set the outer tx gasLimit explicitly from the UserOp's own declared limits.
+  // Auto-estimation under-estimates handleOps for a deploy-on-first-use op: the
+  // EVM 63/64 rule means EntryPoint must hold MORE than verificationGasLimit to
+  // forward it to validateUserOp (which deploys the Safe), so a tight estimate
+  // starves the inner call and reverts with a FailedOp. We budget the declared
+  // limits plus ~12.5% for the 63/64 reserve and EntryPoint's own overhead.
+  const { high: verificationGasLimit, low: callGasLimit } = unpackUint128Pair(op.accountGasLimits);
+  const declared = verificationGasLimit + callGasLimit + op.preVerificationGas;
+  const gasLimit = declared + declared / 8n + 50_000n;
+  const tx = await entryPoint.handleOps([toTuple(op)], await signer.getAddress(), { gasLimit });
   const receipt = await tx.wait();
   return {
     userOpHash: opHash,
